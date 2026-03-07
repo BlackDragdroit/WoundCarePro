@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { ChevronRight, Save, Plus, Camera } from 'lucide-react';
 import { FormInput, FormSelect } from './ui/FormElements';
 
-const WoundAssessmentForm = ({ wound, onCancel, onSave }) => {
+const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
   const [step, setStep] = useState(1);
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(initialData || {
     // Dimensions
     length: '', width: '', depth: '',
     // Characteristics
@@ -53,7 +53,7 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave }) => {
       {/* Form Header */}
       <div className="px-6 py-4 border-b flex items-center justify-between bg-slate-50">
          <div>
-           <h2 className="text-xl font-bold text-slate-800">Neue Beurteilung</h2>
+           <h2 className="text-xl font-bold text-slate-800">{initialData ? 'Beurteilung bearbeiten' : 'Neue Beurteilung'}</h2>
            <p className="text-sm text-slate-500">Ort: {wound.locationName}</p>
          </div>
          <div className="flex gap-2">

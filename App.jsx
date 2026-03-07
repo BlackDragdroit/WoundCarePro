@@ -12,10 +12,12 @@ import {
   Download,
   Database,
   Cloud,
-  CloudOff
+  CloudOff,
+  AlertTriangle
 } from 'lucide-react';
 
 // --- Firebase Imports & Config ---
+/*
 import { initializeApp } from 'firebase/app';
 import { 
   getAuth, 
@@ -35,6 +37,7 @@ import {
   onSnapshot,
   serverTimestamp 
 } from 'firebase/firestore';
+*/
 
 // --- Custom Components ---
 import { STATUS_COLORS, STATUS_TRANSLATION } from './utils/constants';
@@ -52,24 +55,28 @@ import { storeFileHandle, getFileHandle } from './utils/indexedDB';
 import { generateUUID } from './utils/helpers';
 
 // --- Configuration ---
+/*
 const firebaseConfig = JSON.parse(__firebase_config);
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+*/
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'wound-care-demo';
 
 // --- Main Application Component ---
 
 export default function WoundCareApp() {
   const [user, setUser] = useState(null);
-  const [isLocalMode, setIsLocalMode] = useState(false);
+  const [isLocalMode, setIsLocalMode] = useState(true);
   const [fileHandle, setFileHandle] = useState(null);
+  const [isDataLoaded, setIsDataLoaded] = useState(false);
   
   // Navigation State
   const [currentView, setCurrentView] = useState('PATIENT_LIST'); 
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [selectedWound, setSelectedWound] = useState(null);
   const [isEditingWound, setIsEditingWound] = useState(false);
+  const [editingAssessment, setEditingAssessment] = useState(null);
   
   // Modal States
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
@@ -120,6 +127,7 @@ export default function WoundCareApp() {
       }
     };
     
+    /*
     if (!isLocalMode) {
       initAuth();
       const unsubscribe = onAuthStateChanged(auth, (u) => {
@@ -127,9 +135,10 @@ export default function WoundCareApp() {
       });
       return () => unsubscribe();
     } else {
+    */
       // Local Mode User
       setUser({ uid: 'local-user', isAnonymous: true, email: 'local@offline.com' });
-    }
+    // }
   }, [isLocalMode]);
 
   // --- Local Mode Effects ---
@@ -156,8 +165,19 @@ export default function WoundCareApp() {
       }
 
       // 2. If no handle or no permission, prompt user via Modal
-      if (window.showSaveFilePicker) {
-        setShowLocalModeSetupModal(true);
+      const hasApi = 'showSaveFilePicker' in window;
+      
+      if (hasApi) {
+        if (window.showSaveFilePicker) {
+            setShowLocalModeSetupModal(true);
+        }
+      } else {
+        // Fallback for browsers without File System Access API
+        // Only show if we haven't acknowledged it yet (check local storage)
+        const hasAcknowledged = localStorage.getItem('local_mode_browser_only_ack');
+        if (!hasAcknowledged) {
+           setShowLocalModeSetupModal(true);
+        }
       }
     };
 
@@ -165,6 +185,13 @@ export default function WoundCareApp() {
   }, [isLocalMode]);
 
   const handleLocalModeSetupConfirm = async () => {
+    // If API is missing, this is just an acknowledgement
+    if (!('showSaveFilePicker' in window)) {
+       localStorage.setItem('local_mode_browser_only_ack', 'true');
+       setShowLocalModeSetupModal(false);
+       return;
+    }
+
     setLoading(true);
     try {
       const newHandle = await window.showSaveFilePicker({
@@ -191,10 +218,9 @@ export default function WoundCareApp() {
     }
   };
 
-  const handleLocalModeSetupCancel = () => {
+  const handleContinueWithDefault = () => {
     setShowLocalModeSetupModal(false);
-    // Optional: Could revert to cloud mode here if strict enforcement is desired
-    // setIsLocalMode(false); 
+    localStorage.setItem('local_mode_browser_only_ack', 'true');
   };
 
   // 2. Load from Local Storage on Init (Fallback & Initial Load)
@@ -202,16 +228,17 @@ export default function WoundCareApp() {
     if (isLocalMode) {
       const localData = loadFromLocal();
       if (localData) {
-        setPatients(localData.patients || []);
-        setWounds(localData.wounds || []);
-        setEntries(localData.entries || []);
+        if (localData.patients) setPatients(localData.patients);
+        if (localData.wounds) setWounds(localData.wounds);
+        if (localData.entries) setEntries(localData.entries);
       }
+      setIsDataLoaded(true);
     }
   }, [isLocalMode]);
 
   // 3. Auto-Save (File System + LocalStorage Fallback)
   useEffect(() => {
-    if (!isLocalMode) return;
+    if (!isLocalMode || !isDataLoaded) return;
 
     // Always save to localStorage as backup/fast cache
     saveToLocal({ patients, wounds, entries });
@@ -230,6 +257,7 @@ export default function WoundCareApp() {
 
   // --- Data Fetching ---
   
+  /*
   // Fetch Patients
   useEffect(() => {
     if (!user || isLocalMode) return;
@@ -293,6 +321,7 @@ export default function WoundCareApp() {
     }, (err) => console.error("Err fetching entries", err));
     return () => unsub();
   }, [user, selectedWound, isLocalMode]);
+  */
 
   // --- Action Handlers ---
 
@@ -303,7 +332,7 @@ export default function WoundCareApp() {
   const handleSavePatient = async (patientData) => {
     if (!user) return;
 
-    if (isLocalMode) {
+    // if (isLocalMode) {
       const newPatient = {
         id: generateUUID(),
         name: patientData.name,
@@ -314,8 +343,9 @@ export default function WoundCareApp() {
       setPatients(prev => [...prev, newPatient]);
       setShowNewPatientModal(false);
       return;
-    }
+    // }
 
+    /*
     try {
       const timeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out (10s). Check your network connection.")), 10000)
@@ -336,6 +366,7 @@ export default function WoundCareApp() {
     } finally {
       setShowNewPatientModal(false);
     }
+    */
   };
 
   const handleMapClick = (data) => {
@@ -347,13 +378,14 @@ export default function WoundCareApp() {
   const handleSaveWound = async (locationName) => {
     if (!selectedPatient || !tempWoundData) return;
 
-    if (isLocalMode) {
+    // if (isLocalMode) {
       const newWound = {
         id: generateUUID(),
         patientId: selectedPatient.id,
         locationName,
         x: tempWoundData.x,
         y: tempWoundData.y,
+        view: tempWoundData.view || 'front',
         status: 'active',
         createdAt: new Date().toISOString()
       };
@@ -364,13 +396,15 @@ export default function WoundCareApp() {
       setCurrentView('WOUND_FORM');
       setShowNewWoundModal(false);
       return;
-    }
+    // }
 
+    /*
     const newWound = {
       patientId: selectedPatient.id,
       locationName,
       x: tempWoundData.x,
       y: tempWoundData.y,
+      view: tempWoundData.view || 'front',
       status: 'active',
       createdAt: serverTimestamp()
     };
@@ -395,6 +429,7 @@ export default function WoundCareApp() {
     } finally {
       setShowNewWoundModal(false);
     }
+    */
   };
 
   const handleSaveAssessment = async (formData) => {
@@ -406,21 +441,29 @@ export default function WoundCareApp() {
       return;
     }
 
-    if (isLocalMode) {
-      const newEntry = {
-        id: generateUUID(),
-        ...formData,
-        woundId: selectedWound.id,
-        patientId: selectedPatient.id,
-        authorId: user.uid,
-        createdAt: new Date().toISOString()
-      };
-      setEntries(prev => [newEntry, ...prev]);
+    // if (isLocalMode) {
+      if (editingAssessment) {
+        // Update existing entry
+        setEntries(prev => prev.map(e => e.id === editingAssessment.id ? { ...e, ...formData } : e));
+      } else {
+        // Create new entry
+        const newEntry = {
+          id: generateUUID(),
+          ...formData,
+          woundId: selectedWound.id,
+          patientId: selectedPatient.id,
+          authorId: user.uid,
+          createdAt: new Date().toISOString()
+        };
+        setEntries(prev => [newEntry, ...prev]);
+      }
       setIsEditingWound(false);
+      setEditingAssessment(null);
       setCurrentView('WOUND_HISTORY');
       return;
-    }
+    // }
     
+    /*
     try {
       const timeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
@@ -443,6 +486,7 @@ export default function WoundCareApp() {
       console.error("Error saving assessment:", error);
       alert("Fehler beim Speichern: " + error.message);
     }
+    */
   };
 
   // --- Deletion Handlers ---
@@ -452,7 +496,7 @@ export default function WoundCareApp() {
 
     setLoading(true);
 
-    if (isLocalMode) {
+    // if (isLocalMode) {
       // Local Delete
       setEntries(prev => prev.filter(e => e.woundId !== selectedWound.id));
       setWounds(prev => prev.filter(w => w.id !== selectedWound.id));
@@ -461,8 +505,9 @@ export default function WoundCareApp() {
       setLoading(false);
       setShowWoundDeleteConfirm(false);
       return;
-    }
+    // }
 
+    /*
     try {
       const timeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
@@ -491,6 +536,7 @@ export default function WoundCareApp() {
       setLoading(false);
       setShowWoundDeleteConfirm(false); // Ensure modal closes
     }
+    */
   };
 
   const handleDeleteAssessmentRequest = (assessmentId) => {
@@ -503,14 +549,15 @@ export default function WoundCareApp() {
     
     setLoading(true);
 
-    if (isLocalMode) {
+    // if (isLocalMode) {
       setEntries(prev => prev.filter(e => e.id !== assessmentToDelete));
       setAssessmentToDelete(null);
       setLoading(false);
       setShowAssessmentDeleteConfirm(false);
       return;
-    }
+    // }
 
+    /*
     try {
       const timeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
@@ -529,6 +576,7 @@ export default function WoundCareApp() {
       setLoading(false);
       setShowAssessmentDeleteConfirm(false);
     }
+    */
   };
 
   const handleDeletePatientRequest = (e, patient) => {
@@ -542,7 +590,7 @@ export default function WoundCareApp() {
 
     setLoading(true);
 
-    if (isLocalMode) {
+    // if (isLocalMode) {
       // Local Delete
       setEntries(prev => prev.filter(e => e.patientId !== patientToDelete.id));
       setWounds(prev => prev.filter(w => w.patientId !== patientToDelete.id));
@@ -551,8 +599,9 @@ export default function WoundCareApp() {
       setLoading(false);
       setShowPatientDeleteConfirm(false);
       return;
-    }
+    // }
 
+    /*
     try {
       const timeout = new Promise((_, reject) => 
         setTimeout(() => reject(new Error("Request timed out (10s)")), 10000)
@@ -597,6 +646,7 @@ export default function WoundCareApp() {
       setLoading(false);
       setShowPatientDeleteConfirm(false);
     }
+    */
   };
 
   const handleExport = async () => {
@@ -605,14 +655,25 @@ export default function WoundCareApp() {
   };
 
   const handleImport = async () => {
-    const data = await importDatabase();
-    if (data) {
+    const result = await importDatabase();
+    if (result && result.data) {
+      const { data, handle } = result;
+
       if (confirm("Möchten Sie die aktuelle Datenbank mit der importierten Datei überschreiben?")) {
         setPatients(data.patients || []);
         setWounds(data.wounds || []);
         setEntries(data.entries || []);
+        
         if (isLocalMode) {
           saveToLocal(data);
+          
+          // If we got a handle (via File System Access API), use it for future saves
+          if (handle) {
+            await storeFileHandle(handle);
+            setFileHandle(handle);
+            // Verify permission immediately to ensure write access
+            await verifyPermission(handle, true);
+          }
         }
         alert("Datenbank erfolgreich importiert!");
       }
@@ -645,10 +706,19 @@ export default function WoundCareApp() {
               <Database size={12} /> LOKAL
             </span>
           )}
+          {isLocalMode && !('showSaveFilePicker' in window) && (
+            <div className="group relative ml-1">
+              <AlertTriangle className="text-orange-300 w-5 h-5 cursor-help" />
+              <div className="absolute left-0 top-full mt-2 w-48 bg-slate-800 text-white text-xs p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
+                Browser-Speicher aktiv. Daten sind nur auf diesem Gerät verfügbar.
+              </div>
+            </div>
+          )}
         </div>
         
         <div className="flex items-center gap-3">
           {/* Mode Toggle & Actions */}
+          {/* 
           <div className="flex items-center bg-blue-800 rounded-lg p-1">
              <button
                onClick={() => setIsLocalMode(!isLocalMode)}
@@ -661,6 +731,7 @@ export default function WoundCareApp() {
                {isLocalMode ? "Lokal" : "Cloud"}
              </button>
           </div>
+          */}
 
           {isLocalMode && (
              <div className="flex items-center gap-1">
@@ -765,7 +836,7 @@ export default function WoundCareApp() {
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
               
               {/* Left: Body Map & Wound List */}
-              <div className="w-full md:w-1/3 lg:w-1/4 bg-white border-r p-4 overflow-y-auto flex flex-col gap-6">
+              <div className="w-full md:w-1/2 lg:w-1/3 bg-white border-r p-4 overflow-y-auto flex flex-col gap-6">
                 <div>
                   <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
                     <MapPin size={18} /> Körperkarte
@@ -847,7 +918,11 @@ export default function WoundCareApp() {
                   </button>
                   <div className="w-px h-6 bg-slate-200 mx-1"></div>
                   <button 
-                    onClick={() => { setIsEditingWound(true); setCurrentView('WOUND_FORM'); }}
+                    onClick={() => { 
+                      setIsEditingWound(true); 
+                      setEditingAssessment(null); // Clear editing state for new
+                      setCurrentView('WOUND_FORM'); 
+                    }}
                     className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-blue-700"
                   >
                     <Plus size={16} /> Neue Beurteilung
@@ -863,6 +938,10 @@ export default function WoundCareApp() {
                     key={entry.id} 
                     entry={entry} 
                     onDelete={handleDeleteAssessmentRequest}
+                    onEdit={(entry) => {
+                      setEditingAssessment(entry);
+                      setCurrentView('WOUND_FORM');
+                    }}
                     patientName={selectedPatient?.name}
                     woundLocation={selectedWound?.locationName}
                   />
@@ -884,7 +963,11 @@ export default function WoundCareApp() {
         {currentView === 'WOUND_FORM' && selectedWound && (
            <WoundAssessmentForm 
              wound={selectedWound}
-             onCancel={() => setCurrentView(filteredEntries.length > 0 ? 'WOUND_HISTORY' : 'PATIENT_DETAIL')}
+             initialData={editingAssessment}
+             onCancel={() => {
+               setCurrentView(filteredEntries.length > 0 ? 'WOUND_HISTORY' : 'PATIENT_DETAIL');
+               setEditingAssessment(null);
+             }}
              onSave={handleSaveAssessment}
            />
         )}
@@ -913,8 +996,9 @@ export default function WoundCareApp() {
         <LocalModeSetupModal
           isOpen={showLocalModeSetupModal}
           onConfirm={handleLocalModeSetupConfirm}
-          onCancel={handleLocalModeSetupCancel}
+          onContinueDefault={handleContinueWithDefault}
           isLoading={loading}
+          isFileSystemSupported={'showSaveFilePicker' in window}
         />
 
         {/* MODAL: DELETE WOUND CONFIRMATION */}

@@ -4,55 +4,50 @@ import { formatDate, formatDateTime } from '../utils/dateHelpers';
 import { generateWordReport } from '../utils/reportGenerator';
 import { saveAs } from 'file-saver';
 
-const AssessmentCard = ({ entry, onDelete, patientName, woundLocation }) => {
+const AssessmentCard = ({ entry, onDelete, onEdit, patientName, woundLocation }) => {
   const [showReport, setShowReport] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-
-  const generateReport = () => {
-    return `
-WUNDDOKUMENTATION / VERLAUFSBERICHT
-Datum: ${formatDate(entry.createdAt) || 'N/A'}
-Patient: ${patientName || 'Patient'}
-
-SUBJEKTIV:
-Patienteninteraktion dokumentiert. Keine akuten Beschwerden über den Basisstatus hinaus geäußert.
-
-OBJEKTIV:
-Wunde lokalisiert am ${woundLocation || entry.locationName || 'angegebenen Ort'}.
-Maße: L ${entry.length}cm x B ${entry.width}cm x T ${entry.depth}cm.
-Wundgrund: ${entry.phase}.
-Exsudat: ${entry.exudateAmount}, ${entry.exudateType}.
-Wundränder: ${entry.edges}.
-Wundumgebung: ${entry.surroundings}.
-
-BEURTEILUNG:
-Wundstatus erfasst. Therapieanpassung basierend auf aktuellem Erscheinungsbild.
-
-THERAPIEPLAN:
-Reinigung: ${entry.cleanser || 'Standardprotokoll'}.
-Wundfüller: ${entry.filler || 'Keiner'}.
-Verband: ${entry.dressing || 'Keiner'}.
-Kompression: ${entry.compression === 'Ja' ? entry.compressionType : 'Keine'}.
-Nächster Verbandswechsel: ${entry.frequency || '48 Stunden'}.
-    `.trim();
-  };
 
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     try {
-      const blob = await generateWordReport({ ...entry, locationName: woundLocation }, patientName);
-      saveAs(blob, `Wundbericht_${formatDate(entry.createdAt).replace(/\./g, '-')}.docx`);
+      const blob = await generateWordReport(entry, patientName);
+      saveAs(blob, `Wundbericht_${patientName}_${formatDate(new Date())}.docx`);
     } catch (error) {
-      console.error("Error generating report:", error);
-      alert("Fehler beim Erstellen des Berichts.");
+       console.error("Failed to generate report", error);
+       alert("Fehler bei der Berichtserstellung: " + error.message);
     } finally {
       setIsDownloading(false);
     }
   };
 
+  const generateReport = () => {
+    return `WUNDDOKUMENTATION / VERLAUFSBERICHT
+Datum: ${formatDate(entry.createdAt)}
+Patient: ${patientName || 'Unbekannt'}
+
+OBJEKTIV
+Lokalisation: ${entry.locationName || 'Unbekannt'}
+Maße: L ${entry.length}cm x B ${entry.width}cm x T ${entry.depth}cm
+Wundphase: ${entry.phase}
+Exsudat: ${entry.exudateAmount} / ${entry.exudateType}
+Wundränder: ${entry.edges}
+Wundumgebung: ${entry.surroundings}
+
+THERAPIEPLAN
+Reinigung: ${entry.cleanser || '-'}
+Wundfüller: ${entry.filler || '-'}
+Verband: ${entry.dressing || '-'}
+Kompression: ${entry.compression === 'Ja' ? entry.compressionType : 'Keine'}
+Nächster Verbandswechsel: ${entry.frequency || '-'}
+
+NOTIZEN
+${entry.notes || 'Keine Einträge.'}`;
+  };
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm mb-6 overflow-hidden group">
       <div className="px-6 py-4 border-b bg-slate-50 flex justify-between items-center">
+        {/* ... (Left side content remains unchanged) */}
         <div className="flex items-center gap-3">
           <div className="bg-blue-100 text-blue-700 p-2 rounded-lg">
             <Calendar size={18} />
@@ -68,6 +63,13 @@ Nächster Verbandswechsel: ${entry.frequency || '48 Stunden'}.
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button 
+            onClick={() => onEdit(entry)}
+            className="text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-1.5 rounded transition-colors flex items-center gap-2"
+          >
+            Bearbeiten
+          </button>
+          <div className="w-px h-4 bg-slate-300 mx-1"></div>
           <button 
             onClick={() => setShowReport(!showReport)}
             className="text-blue-600 text-sm font-medium hover:bg-blue-50 px-3 py-1.5 rounded transition-colors flex items-center gap-2"
