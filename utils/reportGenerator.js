@@ -1,7 +1,7 @@
 import { Document, Packer, Paragraph, TextRun, ImageRun, HeadingLevel, AlignmentType, BorderStyle } from "docx";
 import { formatDate } from "./dateHelpers";
 
-export const generateWordReport = async (entry, patientName = "Patient") => {
+export const generateWordReport = async (entry, patientName = "Patient", woundLocation = "Unbekannt") => {
   const children = [];
 
   // Helper to safely handle text inputs
@@ -40,7 +40,13 @@ export const generateWordReport = async (entry, patientName = "Patient") => {
       spacing: { before: 200, after: 100 },
     }),
     new Paragraph({
-      text: "Patienteninteraktion dokumentiert. Keine akuten Beschwerden über den Basisstatus hinaus geäußert.",
+      text: "Patienteninteraktion dokumentiert.",
+    }),
+    new Paragraph({
+      text: "Akute Beschwerden über den Basisstatus hinaus geäußert:",
+    }),
+    new Paragraph({
+      text: safeText(entry.subjectiveComplaints, "Keine"),
     })
   );
 
@@ -54,7 +60,7 @@ export const generateWordReport = async (entry, patientName = "Patient") => {
     new Paragraph({
       children: [
         new TextRun({ text: "Lokalisation: ", bold: true }),
-        new TextRun(safeText(entry.locationName, "Unbekannt")),
+        new TextRun(safeText(woundLocation || entry.locationName, "Unbekannt")),
       ],
     }),
     new Paragraph({

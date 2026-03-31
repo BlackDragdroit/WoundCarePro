@@ -24,7 +24,7 @@ const LocalModeSetupModal = ({
             <p className="text-sm text-slate-600 mt-2 leading-relaxed">
               {isFileSystemSupported ? (
                 <>
-                  Standardmäßig werden Ihre Daten im <strong>sicheren lokalen Browser-Speicher</strong> abgelegt (ähnlich wie AppData).
+                  Standardmäßig werden Ihre Daten im <strong>sicheren lokalen Browser-Speicher</strong> abgelegt.
                   <br /><br />
                   Sie können stattdessen jetzt eine lokale Datei auf Ihrem Gerät wählen, in der alle Ihre Daten automatisch gesichert werden.
                 </>

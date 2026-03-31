@@ -21,6 +21,7 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
     compressionType: '',
     frequency: 'Täglich',
     // Misc
+    subjectiveComplaints: '',
     notes: '',
     imageUrl: '' // For demo, we'll store base64 or mock
   });
@@ -147,16 +148,29 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
                  options={['Intakt', 'Rötung (Erythem)', 'Mazeriert', 'Exkoriert', 'Verhärtet']} 
                />
             </div>
-            <div className="pt-4">
-              <label className="block text-sm font-medium text-slate-700 mb-1">Allgemeine Beschreibung / Notizen</label>
-              <textarea 
-                name="notes" 
-                value={formData.notes} 
-                onChange={handleChange}
-                className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                rows={4}
-                placeholder="Zusätzliche klinische Beobachtungen..."
-              />
+            <div className="pt-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Subjektive Beschwerden</label>
+                <textarea 
+                  name="subjectiveComplaints" 
+                  value={formData.subjectiveComplaints} 
+                  onChange={handleChange}
+                  className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  rows={2}
+                  placeholder="z.B. Schmerzen, Juckreiz, über den Basisstatus hinausgehende Beschwerden..."
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Allgemeine Beschreibung / Notizen</label>
+                <textarea 
+                  name="notes" 
+                  value={formData.notes} 
+                  onChange={handleChange}
+                  className="w-full p-3 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  rows={4}
+                  placeholder="Zusätzliche klinische Beobachtungen..."
+                />
+              </div>
             </div>
           </div>
         )}

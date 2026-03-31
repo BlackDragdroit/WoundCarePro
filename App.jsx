@@ -13,7 +13,8 @@ import {
   Database,
   Cloud,
   CloudOff,
-  AlertTriangle
+  AlertTriangle,
+  MoreVertical
 } from 'lucide-react';
 
 // --- Firebase Imports & Config ---
@@ -82,6 +83,7 @@ export default function WoundCareApp() {
   const [showNewPatientModal, setShowNewPatientModal] = useState(false);
   const [showNewWoundModal, setShowNewWoundModal] = useState(false);
   const [showLocalModeSetupModal, setShowLocalModeSetupModal] = useState(false);
+  const [showHeaderMenu, setShowHeaderMenu] = useState(false);
   
   // Deletion States
   const [showWoundDeleteConfirm, setShowWoundDeleteConfirm] = useState(false);
@@ -165,6 +167,11 @@ export default function WoundCareApp() {
       }
 
       // 2. If no handle or no permission, prompt user via Modal
+      const hasAcknowledged = localStorage.getItem('local_mode_browser_only_ack');
+      if (hasAcknowledged) {
+        return; // User previously acknowledged and chose fallback/standard
+      }
+
       const hasApi = 'showSaveFilePicker' in window;
       
       if (hasApi) {
@@ -172,12 +179,7 @@ export default function WoundCareApp() {
             setShowLocalModeSetupModal(true);
         }
       } else {
-        // Fallback for browsers without File System Access API
-        // Only show if we haven't acknowledged it yet (check local storage)
-        const hasAcknowledged = localStorage.getItem('local_mode_browser_only_ack');
-        if (!hasAcknowledged) {
-           setShowLocalModeSetupModal(true);
-        }
+        setShowLocalModeSetupModal(true);
       }
     };
 
@@ -207,6 +209,7 @@ export default function WoundCareApp() {
       
       // Initial save to establish the file
       await saveToHandle(newHandle, { patients, wounds, entries });
+      localStorage.setItem('local_mode_browser_only_ack', 'true');
       setShowLocalModeSetupModal(false);
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -393,7 +396,6 @@ export default function WoundCareApp() {
       setSelectedWound(newWound);
       setTempWoundData(null);
       setIsEditingWound(true);
-      setCurrentView('WOUND_FORM');
       setShowNewWoundModal(false);
       return;
     // }
@@ -459,7 +461,6 @@ export default function WoundCareApp() {
       }
       setIsEditingWound(false);
       setEditingAssessment(null);
-      setCurrentView('WOUND_HISTORY');
       return;
     // }
     
@@ -501,7 +502,6 @@ export default function WoundCareApp() {
       setEntries(prev => prev.filter(e => e.woundId !== selectedWound.id));
       setWounds(prev => prev.filter(w => w.id !== selectedWound.id));
       setSelectedWound(null);
-      setCurrentView('PATIENT_DETAIL');
       setLoading(false);
       setShowWoundDeleteConfirm(false);
       return;
@@ -701,20 +701,21 @@ export default function WoundCareApp() {
         <div className="flex items-center gap-2">
           <Activity className="w-6 h-6" />
           <h1 className="text-lg font-bold tracking-wide">WundDoku Pro</h1>
-          {isLocalMode && (
+          {/* {isLocalMode && (
             <span className="bg-orange-500 text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
               <Database size={12} /> LOKAL
             </span>
-          )}
-          {isLocalMode && !('showSaveFilePicker' in window) && (
+          )} */}
+          {!('showSaveFilePicker' in window) && (
             <div className="group relative ml-1">
               <AlertTriangle className="text-orange-300 w-5 h-5 cursor-help" />
               <div className="absolute left-0 top-full mt-2 w-48 bg-slate-800 text-white text-xs p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
-                Browser-Speicher aktiv. Daten sind nur auf diesem Gerät verfügbar.
+                Lokaler Speicher aktiv. Daten sind nur auf diesem Gerät verfügbar.
               </div>
             </div>
           )}
         </div>
+        
         
         <div className="flex items-center gap-3">
           {/* Mode Toggle & Actions */}
@@ -732,29 +733,54 @@ export default function WoundCareApp() {
              </button>
           </div>
           */}
-
-          {isLocalMode && (
-             <div className="flex items-center gap-1">
-               <button 
-                 onClick={handleImport}
-                 className="p-2 hover:bg-blue-600 rounded-lg text-blue-100"
-                 title="Datenbank importieren"
-               >
-                 <Upload size={18} />
-               </button>
-               <button 
-                 onClick={handleExport}
-                 className="p-2 hover:bg-blue-600 rounded-lg text-blue-100"
-                 title="Datenbank exportieren (Backup)"
-               >
-                 <Download size={18} />
-               </button>
-             </div>
-          )}
-
           <div className="text-xs opacity-80 bg-blue-800 px-2 py-1 rounded hidden md:block">
             {selectedPatient ? `Patient: ${selectedPatient.name}` : 'Übersicht'}
           </div>
+          {isLocalMode && (
+             <div className="relative">
+               <button 
+                 onClick={() => setShowHeaderMenu(!showHeaderMenu)}
+                 className="p-2 hover:bg-blue-600 rounded-lg text-blue-100 transition-colors"
+                 title="Menü"
+               >
+                 <MoreVertical size={20} />
+               </button>
+               
+               {showHeaderMenu && (
+                 <>
+                   <div 
+                     className="fixed inset-0 z-40"
+                     onClick={() => setShowHeaderMenu(false)}
+                   />
+                   <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                     <button 
+                       onClick={() => { setShowHeaderMenu(false); handleExport(); }}
+                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
+                     >
+                       <Upload size={16} className="text-slate-400" />
+                       Datenbank exportieren
+                     </button>
+                     <button 
+                       onClick={() => { setShowHeaderMenu(false); handleImport(); }}
+                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                     >
+                       <Download size={16} className="text-slate-400" />
+                       Datenbank importieren
+                     </button>
+                     {'showSaveFilePicker' in window && (
+                       <button 
+                         onClick={() => { setShowHeaderMenu(false); handleLocalModeSetupConfirm(); }}
+                         className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
+                       >
+                         <Save size={16} className="text-slate-400" />
+                         {fileHandle ? 'Speicherort ändern' : 'Lokale Datei verknüpfen'}
+                       </button>
+                     )}
+                   </div>
+                 </>
+               )}
+             </div>
+          )}
         </div>
       </header>
 
@@ -836,7 +862,7 @@ export default function WoundCareApp() {
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
               
               {/* Left: Body Map & Wound List */}
-              <div className="w-full md:w-1/2 lg:w-1/3 bg-white border-r p-4 overflow-y-auto flex flex-col gap-6">
+              <div className={`w-full md:w-1/2 lg:w-1/3 bg-white border-r p-4 overflow-y-auto flex-col gap-6 ${selectedWound ? 'hidden md:flex' : 'flex'}`}>
                 <div>
                   <h3 className="font-bold text-slate-700 mb-4 flex items-center gap-2">
                     <MapPin size={18} /> Körperkarte
@@ -856,7 +882,7 @@ export default function WoundCareApp() {
                         key={w.id}
                         onClick={() => {
                           setSelectedWound(w);
-                          setCurrentView('WOUND_HISTORY');
+                          setIsEditingWound(false);
                         }}
                         className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                           selectedWound?.id === w.id 
@@ -884,92 +910,86 @@ export default function WoundCareApp() {
                 </div>
               </div>
 
-              {/* Right: Detail View Placeholder */}
-              <div className="flex-1 bg-slate-50 flex items-center justify-center text-slate-400 text-center px-4">
-                Wählen Sie eine Wunde aus der Liste oder klicken Sie auf die Körperkarte, um eine neue zu dokumentieren.
+              {/* Right: Master-Detail Content */}
+              <div className={`flex-1 bg-slate-50 flex-col overflow-hidden ${!selectedWound ? 'hidden md:flex' : 'flex'}`}>
+                {!selectedWound ? (
+                  <div className="flex-1 flex items-center justify-center text-slate-400 text-center px-4">
+                    Wählen Sie eine Wunde aus der Liste oder klicken Sie auf die Körperkarte, um eine neue zu dokumentieren.
+                  </div>
+                ) : isEditingWound ? (
+                  <WoundAssessmentForm 
+                    wound={selectedWound}
+                    initialData={editingAssessment}
+                    onCancel={() => {
+                      setIsEditingWound(false);
+                      setEditingAssessment(null);
+                    }}
+                    onSave={handleSaveAssessment}
+                  />
+                ) : (
+                  <div className="h-full flex flex-col">
+                     {/* Nav Bar */}
+                     <div className="bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm z-10">
+                        <div className="flex items-center gap-4">
+                          <button 
+                            onClick={() => setSelectedWound(null)}
+                            className="md:hidden p-2 -ml-2 text-slate-500 hover:text-blue-600 rounded-lg"
+                          >
+                            <ArrowLeft size={20} />
+                          </button>
+                          <h2 className="font-bold text-lg text-slate-800">{selectedWound.locationName} - Verlauf</h2>
+                        </div>
 
+                        <div className="flex items-center gap-3">
+                          <button 
+                            onClick={() => setShowWoundDeleteConfirm(true)}
+                            className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"
+                            title="Wunde und Verlauf löschen"
+                          >
+                            <Trash2 size={20} />
+                          </button>
+                          <div className="w-px h-6 bg-slate-200 mx-1"></div>
+                          <button 
+                            onClick={() => { 
+                              setIsEditingWound(true); 
+                              setEditingAssessment(null); // Clear editing state for new
+                            }}
+                            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-blue-700 transition-colors"
+                          >
+                            <Plus size={16} /> Neue Beurteilung
+                          </button>
+                        </div>
+                     </div>
+
+                     <div className="flex-1 overflow-y-auto p-4 md:p-8 w-full max-w-4xl mx-auto">
+                        {filteredEntries.map((entry) => (
+                          <AssessmentCard 
+                            key={entry.id} 
+                            entry={entry} 
+                            onDelete={handleDeleteAssessmentRequest}
+                            onEdit={(entry) => {
+                              setEditingAssessment(entry);
+                              setIsEditingWound(true);
+                            }}
+                            patientName={selectedPatient?.name}
+                            woundLocation={selectedWound?.locationName}
+                          />
+                        ))}
+                        {filteredEntries.length === 0 && (
+                          <div className="text-center py-20">
+                            <div className="inline-block p-4 bg-white rounded-full shadow-sm mb-4">
+                              <FileText size={40} className="text-slate-200" />
+                            </div>
+                            <h3 className="text-lg font-medium text-slate-700">Noch keine Beurteilungen</h3>
+                            <p className="text-slate-500 max-w-xs mx-auto mt-2 text-sm">Starten Sie die erste Dokumentation für diese Wunde, um einen Basisbericht zu erstellen.</p>
+                          </div>
+                        )}
+                     </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
-        )}
-
-        {/* VIEW: WOUND HISTORY & DETAIL */}
-        {currentView === 'WOUND_HISTORY' && selectedWound && (
-          <div className="h-full flex flex-col">
-             {/* Nav Bar */}
-             <div className="bg-white border-b px-4 py-3 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <button 
-                    onClick={() => setCurrentView('PATIENT_DETAIL')}
-                    className="flex items-center gap-2 text-slate-600 hover:text-blue-600"
-                  >
-                    <ArrowLeft size={18} /> Zurück zur Karte
-                  </button>
-                  <h2 className="font-bold text-lg hidden md:block">{selectedWound.locationName} - Verlauf</h2>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <button 
-                    onClick={() => setShowWoundDeleteConfirm(true)}
-                    className="text-red-600 hover:bg-red-50 p-2 rounded-lg transition-colors"
-                    title="Wunde und Verlauf löschen"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                  <div className="w-px h-6 bg-slate-200 mx-1"></div>
-                  <button 
-                    onClick={() => { 
-                      setIsEditingWound(true); 
-                      setEditingAssessment(null); // Clear editing state for new
-                      setCurrentView('WOUND_FORM'); 
-                    }}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 shadow-sm hover:bg-blue-700"
-                  >
-                    <Plus size={16} /> Neue Beurteilung
-                  </button>
-                </div>
-             </div>
-
-             <div className="flex-1 overflow-y-auto p-4 md:p-8 max-w-5xl mx-auto w-full">
-                <h2 className="font-bold text-lg md:hidden mb-4">{selectedWound.locationName} - Verlauf</h2>
-                
-                {filteredEntries.map((entry) => (
-                  <AssessmentCard 
-                    key={entry.id} 
-                    entry={entry} 
-                    onDelete={handleDeleteAssessmentRequest}
-                    onEdit={(entry) => {
-                      setEditingAssessment(entry);
-                      setCurrentView('WOUND_FORM');
-                    }}
-                    patientName={selectedPatient?.name}
-                    woundLocation={selectedWound?.locationName}
-                  />
-                ))}
-                {filteredEntries.length === 0 && (
-                  <div className="text-center py-20">
-                    <div className="inline-block p-4 bg-white rounded-full shadow-sm mb-4">
-                      <FileText size={40} className="text-slate-300" />
-                    </div>
-                    <h3 className="text-lg font-medium text-slate-700">Noch keine Beurteilungen</h3>
-                    <p className="text-slate-500 max-w-xs mx-auto mt-2">Starten Sie die erste Dokumentation für diese Wunde, um einen Basisbericht zu erstellen.</p>
-                  </div>
-                )}
-             </div>
-          </div>
-        )}
-
-        {/* VIEW: WOUND FORM (CREATE/EDIT) */}
-        {currentView === 'WOUND_FORM' && selectedWound && (
-           <WoundAssessmentForm 
-             wound={selectedWound}
-             initialData={editingAssessment}
-             onCancel={() => {
-               setCurrentView(filteredEntries.length > 0 ? 'WOUND_HISTORY' : 'PATIENT_DETAIL');
-               setEditingAssessment(null);
-             }}
-             onSave={handleSaveAssessment}
-           />
         )}
 
         {/* MODAL: NEW PATIENT */}

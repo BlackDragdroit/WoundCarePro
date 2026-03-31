@@ -11,7 +11,7 @@ const AssessmentCard = ({ entry, onDelete, onEdit, patientName, woundLocation })
   const handleDownloadReport = async () => {
     setIsDownloading(true);
     try {
-      const blob = await generateWordReport(entry, patientName);
+      const blob = await generateWordReport(entry, patientName, woundLocation);
       saveAs(blob, `Wundbericht_${patientName}_${formatDate(new Date())}.docx`);
     } catch (error) {
        console.error("Failed to generate report", error);
@@ -26,8 +26,13 @@ const AssessmentCard = ({ entry, onDelete, onEdit, patientName, woundLocation })
 Datum: ${formatDate(entry.createdAt)}
 Patient: ${patientName || 'Unbekannt'}
 
+SUBJEKTIV
+Patienteninteraktion dokumentiert.
+Akute Beschwerden über den Basisstatus hinaus geäußert:
+${entry.subjectiveComplaints || 'Keine'}
+
 OBJEKTIV
-Lokalisation: ${entry.locationName || 'Unbekannt'}
+Lokalisation: ${woundLocation || entry.locationName || 'Unbekannt'}
 Maße: L ${entry.length}cm x B ${entry.width}cm x T ${entry.depth}cm
 Wundphase: ${entry.phase}
 Exsudat: ${entry.exudateAmount} / ${entry.exudateType}
