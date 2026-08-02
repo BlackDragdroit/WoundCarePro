@@ -14,7 +14,8 @@ import {
   Cloud,
   CloudOff,
   AlertTriangle,
-  MoreVertical
+  MoreVertical,
+  Lock
 } from 'lucide-react';
 
 // --- Firebase Imports & Config ---
@@ -49,11 +50,15 @@ import AssessmentCard from './components/AssessmentCard';
 import WoundAssessmentForm from './components/WoundAssessmentForm';
 import ConfirmationModal from './components/ConfirmationModal';
 import LocalModeSetupModal from './components/LocalModeSetupModal';
+import PasswordModal from './components/PasswordModal';
+import ConnectionSettingsModal from './components/ConnectionSettingsModal';
+import ChangePasswordModal from './components/ChangePasswordModal';
 import { formatDate } from './utils/dateHelpers';
 import { saveToLocal, loadFromLocal } from './utils/storage';
 import { exportDatabase, importDatabase, verifyPermission, saveToHandle } from './utils/fileSystem';
 import { storeFileHandle, getFileHandle } from './utils/indexedDB';
 import { generateUUID } from './utils/helpers';
+import { encryptData, decryptData } from './utils/crypto';
 
 // --- Configuration ---
 /*
@@ -71,6 +76,24 @@ export default function WoundCareApp() {
   const [isLocalMode, setIsLocalMode] = useState(true);
   const [fileHandle, setFileHandle] = useState(null);
   const [isDataLoaded, setIsDataLoaded] = useState(false);
+
+  // Security & Encryption State
+  const [password, setPassword] = useState('');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [passwordModalMode, setPasswordModalMode] = useState('unlock'); // 'unlock' | 'setup'
+  const [passwordError, setPasswordError] = useState('');
+  const [cryptoLoading, setCryptoLoading] = useState(false);
+  const [rawEncryptedData, setRawEncryptedData] = useState(null);
+
+  // Storage Engine State (Local vs Synology Live)
+  const [storageMode, setStorageMode] = useState(() => {
+    return localStorage.getItem('wound_care_storage_mode') || 'local'; // 'local' | 'synology'
+  });
+  const [synologyUrl, setSynologyUrl] = useState(() => {
+    return localStorage.getItem('wound_care_synology_url') || 'http://localhost:3000';
+  });
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   
   // Navigation State
   const [currentView, setCurrentView] = useState('PATIENT_LIST'); 
@@ -226,37 +249,192 @@ export default function WoundCareApp() {
     localStorage.setItem('local_mode_browser_only_ack', 'true');
   };
 
+  // Fetch data from Synology API
+  const loadSynologyData = async () => {
+    try {
+      setCryptoLoading(true);
+      const urlPat = `${synologyUrl}/api/patients`;
+      const urlWnd = `${synologyUrl}/api/wounds`;
+      const urlEnt = `${synologyUrl}/api/entries`;
+
+      const [resPatients, resWounds, resEntries] = await Promise.all([
+        fetch(urlPat),
+        fetch(urlWnd),
+        fetch(urlEnt)
+      ]);
+
+      if (!resPatients.ok || !resWounds.ok || !resEntries.ok) {
+        throw new Error('Server antwortete mit einem Fehlerstatus.');
+      }
+
+      const pData = await resPatients.json();
+      const wData = await resWounds.json();
+      const eData = await resEntries.json();
+
+      setPatients(pData);
+      setWounds(wData);
+      setEntries(eData);
+      setIsDataLoaded(true);
+      setShowPasswordModal(false);
+    } catch (err) {
+      console.error(err);
+      alert("Fehler beim Laden vom Synology Server:\n" + err.message + "\n\nDie App wird im Offline-Modus gestufen.");
+      setStorageMode('local');
+      localStorage.setItem('wound_care_storage_mode', 'local');
+    } finally {
+      setCryptoLoading(false);
+    }
+  };
+
   // 2. Load from Local Storage on Init (Fallback & Initial Load)
   useEffect(() => {
-    if (isLocalMode) {
-      const localData = loadFromLocal();
-      if (localData) {
-        if (localData.patients) setPatients(localData.patients);
-        if (localData.wounds) setWounds(localData.wounds);
-        if (localData.entries) setEntries(localData.entries);
+    if (storageMode === 'synology') {
+      loadSynologyData();
+    } else {
+      if (isLocalMode) {
+        const dbData = loadFromLocal();
+        if (dbData) {
+          if (dbData.ciphertext) {
+            // Encrypted database found. Show unlock prompt.
+            setRawEncryptedData(dbData);
+            setPasswordModalMode('unlock');
+            setShowPasswordModal(true);
+          } else {
+            // Plaintext database found (legacy data transition).
+            // Prompt user to set a password to encrypt this existing data.
+            setRawEncryptedData(dbData);
+            setPasswordModalMode('setup');
+            setShowPasswordModal(true);
+          }
+        } else {
+          // Brand new database. Force user to set a password on startup to secure future inputs.
+          setPasswordModalMode('setup');
+          setShowPasswordModal(true);
+        }
       }
-      setIsDataLoaded(true);
     }
-  }, [isLocalMode]);
+  }, [isLocalMode, storageMode]);
+
+  // Handle password prompt submissions
+  const handlePasswordSubmit = async (pwd) => {
+    setPasswordError('');
+    setCryptoLoading(true);
+
+    try {
+      if (passwordModalMode === 'setup') {
+        // Enrolling new password!
+        setPassword(pwd);
+        
+        // If there was legacy plaintext data in memory, encrypt and save it now
+        if (rawEncryptedData && !rawEncryptedData.ciphertext) {
+          const plainText = JSON.stringify(rawEncryptedData);
+          const encrypted = await encryptData(plainText, pwd);
+          saveToLocal(encrypted);
+          if (fileHandle) {
+            await saveToHandle(fileHandle, encrypted);
+          }
+          // Load the database state
+          if (rawEncryptedData.patients) setPatients(rawEncryptedData.patients);
+          if (rawEncryptedData.wounds) setWounds(rawEncryptedData.wounds);
+          if (rawEncryptedData.entries) setEntries(rawEncryptedData.entries);
+        } else {
+          // New empty database
+          setPatients([]);
+          setWounds([]);
+          setEntries([]);
+          
+          // Save an empty encrypted shell so it doesn't prompt for setup again on next boot
+          const plainText = JSON.stringify({ patients: [], wounds: [], entries: [] });
+          const encrypted = await encryptData(plainText, pwd);
+          saveToLocal(encrypted);
+        }
+
+        setIsDataLoaded(true);
+        setShowPasswordModal(false);
+      } else {
+        // Unlocking existing database
+        if (!rawEncryptedData || !rawEncryptedData.ciphertext) {
+          throw new Error('Keine verschlüsselten Daten gefunden.');
+        }
+
+        const decryptedText = await decryptData(rawEncryptedData, pwd);
+        const parsed = JSON.parse(decryptedText);
+
+        setPassword(pwd);
+        setPatients(parsed.patients || []);
+        setWounds(parsed.wounds || []);
+        setEntries(parsed.entries || []);
+        setIsDataLoaded(true);
+        setShowPasswordModal(false);
+      }
+    } catch (err) {
+      console.error(err);
+      if (passwordModalMode === 'unlock') {
+        setPasswordError('Falsches Passwort. Bitte versuchen Sie es erneut.');
+      } else {
+        setPasswordError('Fehler beim Einrichten der Verschlüsselung: ' + err.message);
+      }
+    } finally {
+      setCryptoLoading(false);
+    }
+  };
+
+  // Save Settings handler
+  const handleSaveConnectionSettings = (mode, url) => {
+    setStorageMode(mode);
+    setSynologyUrl(url);
+    localStorage.setItem('wound_care_storage_mode', mode);
+    localStorage.setItem('wound_care_synology_url', url);
+    setShowSettingsModal(false);
+    setIsDataLoaded(false);
+  };
+
+  const handleChangePassword = async (newPassword) => {
+    try {
+      setCryptoLoading(true);
+      const plainText = JSON.stringify({ patients, wounds, entries });
+      const encrypted = await encryptData(plainText, newPassword);
+      
+      saveToLocal(encrypted);
+      if (fileHandle) {
+        await saveToHandle(fileHandle, encrypted);
+      }
+      
+      setPassword(newPassword);
+      setShowChangePasswordModal(false);
+      alert("Passwort erfolgreich geändert! Ab dem nächsten Start müssen Sie das neue Passwort verwenden.");
+    } catch (err) {
+      console.error(err);
+      alert("Fehler beim Ändern des Passworts: " + err.message);
+    } finally {
+      setCryptoLoading(false);
+    }
+  };
 
   // 3. Auto-Save (File System + LocalStorage Fallback)
   useEffect(() => {
-    if (!isLocalMode || !isDataLoaded) return;
+    // Only save if data is loaded AND password is set AND we are in local mode
+    if (!isLocalMode || !isDataLoaded || !password || storageMode === 'synology') return;
 
-    // Always save to localStorage as backup/fast cache
-    saveToLocal({ patients, wounds, entries });
+    const saveData = async () => {
+      try {
+        const plainText = JSON.stringify({ patients, wounds, entries });
+        const encrypted = await encryptData(plainText, password);
+        
+        saveToLocal(encrypted);
 
-    // Debounced save to File System
-    const saveDataToFile = async () => {
-      if (fileHandle) {
-        await saveToHandle(fileHandle, { patients, wounds, entries });
+        if (fileHandle) {
+          await saveToHandle(fileHandle, encrypted);
+        }
+      } catch (err) {
+        console.error("Fehler beim automatischen Verschlüsseln/Speichern:", err);
       }
     };
 
-    const timeoutId = setTimeout(saveDataToFile, 1000); // 1s debounce
+    const timeoutId = setTimeout(saveData, 1000); // 1s debounce
     return () => clearTimeout(timeoutId);
 
-  }, [patients, wounds, entries, isLocalMode, fileHandle]);
+  }, [patients, wounds, entries, isLocalMode, fileHandle, password, isDataLoaded, storageMode]);
 
   // --- Data Fetching ---
   
@@ -336,16 +514,30 @@ export default function WoundCareApp() {
     if (!user) return;
 
     // if (isLocalMode) {
-      const newPatient = {
-        id: generateUUID(),
-        name: patientData.name,
-        dob: patientData.dob,
-        mrn: `MRN-${Math.floor(Math.random() * 10000)}`,
-        createdAt: new Date().toISOString()
-      };
-      setPatients(prev => [...prev, newPatient]);
-      setShowNewPatientModal(false);
-      return;
+    const newPatient = {
+      id: generateUUID(),
+      name: patientData.name,
+      dob: patientData.dob,
+      mrn: `MRN-${Math.floor(Math.random() * 10000)}`,
+      createdAt: new Date().toISOString()
+    };
+    
+    if (storageMode === 'synology') {
+      try {
+        await fetch(`${synologyUrl}/api/patients`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newPatient)
+        });
+      } catch (err) {
+        console.error("Synology Save Patient Error:", err);
+        alert("Speichern auf Synology fehlgeschlagen.");
+      }
+    }
+
+    setPatients(prev => [...prev, newPatient]);
+    setShowNewPatientModal(false);
+    return;
     // }
 
     /*
@@ -382,22 +574,36 @@ export default function WoundCareApp() {
     if (!selectedPatient || !tempWoundData) return;
 
     // if (isLocalMode) {
-      const newWound = {
-        id: generateUUID(),
-        patientId: selectedPatient.id,
-        locationName,
-        x: tempWoundData.x,
-        y: tempWoundData.y,
-        view: tempWoundData.view || 'front',
-        status: 'active',
-        createdAt: new Date().toISOString()
-      };
-      setWounds(prev => [...prev, newWound]);
-      setSelectedWound(newWound);
-      setTempWoundData(null);
-      setIsEditingWound(true);
-      setShowNewWoundModal(false);
-      return;
+    const newWound = {
+      id: generateUUID(),
+      patientId: selectedPatient.id,
+      locationName,
+      x: tempWoundData.x,
+      y: tempWoundData.y,
+      view: tempWoundData.view || 'front',
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+    
+    if (storageMode === 'synology') {
+      try {
+        await fetch(`${synologyUrl}/api/wounds`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newWound)
+        });
+      } catch (err) {
+        console.error("Synology Save Wound Error:", err);
+        alert("Speichern der Wunde auf Synology fehlgeschlagen.");
+      }
+    }
+
+    setWounds(prev => [...prev, newWound]);
+    setSelectedWound(newWound);
+    setTempWoundData(null);
+    setIsEditingWound(true);
+    setShowNewWoundModal(false);
+    return;
     // }
 
     /*
@@ -444,24 +650,53 @@ export default function WoundCareApp() {
     }
 
     // if (isLocalMode) {
-      if (editingAssessment) {
-        // Update existing entry
-        setEntries(prev => prev.map(e => e.id === editingAssessment.id ? { ...e, ...formData } : e));
-      } else {
-        // Create new entry
-        const newEntry = {
-          id: generateUUID(),
-          ...formData,
-          woundId: selectedWound.id,
-          patientId: selectedPatient.id,
-          authorId: user.uid,
-          createdAt: new Date().toISOString()
-        };
-        setEntries(prev => [newEntry, ...prev]);
+    if (editingAssessment) {
+      // Update existing entry
+      const updatedEntry = { ...editingAssessment, ...formData };
+      
+      if (storageMode === 'synology') {
+        try {
+          await fetch(`${synologyUrl}/api/entries`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(updatedEntry)
+          });
+        } catch (err) {
+          console.error("Synology Update Assessment Error:", err);
+          alert("Doku-Update auf Synology fehlgeschlagen.");
+        }
       }
-      setIsEditingWound(false);
-      setEditingAssessment(null);
-      return;
+
+      setEntries(prev => prev.map(e => e.id === editingAssessment.id ? updatedEntry : e));
+    } else {
+      // Create new entry
+      const newEntry = {
+        id: generateUUID(),
+        ...formData,
+        woundId: selectedWound.id,
+        patientId: selectedPatient.id,
+        authorId: user.uid,
+        createdAt: new Date().toISOString()
+      };
+
+      if (storageMode === 'synology') {
+        try {
+          await fetch(`${synologyUrl}/api/entries`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newEntry)
+          });
+        } catch (err) {
+          console.error("Synology Create Assessment Error:", err);
+          alert("Speichern der Doku auf Synology fehlgeschlagen.");
+        }
+      }
+
+      setEntries(prev => [newEntry, ...prev]);
+    }
+    setIsEditingWound(false);
+    setEditingAssessment(null);
+    return;
     // }
     
     /*
@@ -497,14 +732,23 @@ export default function WoundCareApp() {
 
     setLoading(true);
 
-    // if (isLocalMode) {
-      // Local Delete
-      setEntries(prev => prev.filter(e => e.woundId !== selectedWound.id));
-      setWounds(prev => prev.filter(w => w.id !== selectedWound.id));
-      setSelectedWound(null);
-      setLoading(false);
-      setShowWoundDeleteConfirm(false);
-      return;
+    if (storageMode === 'synology') {
+      try {
+        await fetch(`${synologyUrl}/api/wounds/${selectedWound.id}`, {
+          method: 'DELETE'
+        });
+      } catch (err) {
+        console.error("Synology Delete Wound Error:", err);
+      }
+    }
+
+    // Local Delete
+    setEntries(prev => prev.filter(e => e.woundId !== selectedWound.id));
+    setWounds(prev => prev.filter(w => w.id !== selectedWound.id));
+    setSelectedWound(null);
+    setLoading(false);
+    setShowWoundDeleteConfirm(false);
+    return;
     // }
 
     /*
@@ -549,12 +793,21 @@ export default function WoundCareApp() {
     
     setLoading(true);
 
-    // if (isLocalMode) {
-      setEntries(prev => prev.filter(e => e.id !== assessmentToDelete));
-      setAssessmentToDelete(null);
-      setLoading(false);
-      setShowAssessmentDeleteConfirm(false);
-      return;
+    if (storageMode === 'synology') {
+      try {
+        await fetch(`${synologyUrl}/api/entries/${assessmentToDelete}`, {
+          method: 'DELETE'
+        });
+      } catch (err) {
+        console.error("Synology Delete Assessment Error:", err);
+      }
+    }
+
+    setEntries(prev => prev.filter(e => e.id !== assessmentToDelete));
+    setAssessmentToDelete(null);
+    setLoading(false);
+    setShowAssessmentDeleteConfirm(false);
+    return;
     // }
 
     /*
@@ -590,15 +843,24 @@ export default function WoundCareApp() {
 
     setLoading(true);
 
-    // if (isLocalMode) {
-      // Local Delete
-      setEntries(prev => prev.filter(e => e.patientId !== patientToDelete.id));
-      setWounds(prev => prev.filter(w => w.patientId !== patientToDelete.id));
-      setPatients(prev => prev.filter(p => p.id !== patientToDelete.id));
-      setPatientToDelete(null);
-      setLoading(false);
-      setShowPatientDeleteConfirm(false);
-      return;
+    if (storageMode === 'synology') {
+      try {
+        await fetch(`${synologyUrl}/api/patients/${patientToDelete.id}`, {
+          method: 'DELETE'
+        });
+      } catch (err) {
+        console.error("Synology Delete Patient Error:", err);
+      }
+    }
+
+    // Local Delete
+    setEntries(prev => prev.filter(e => e.patientId !== patientToDelete.id));
+    setWounds(prev => prev.filter(w => w.patientId !== patientToDelete.id));
+    setPatients(prev => prev.filter(p => p.id !== patientToDelete.id));
+    setPatientToDelete(null);
+    setLoading(false);
+    setShowPatientDeleteConfirm(false);
+    return;
     // }
 
     /*
@@ -650,8 +912,16 @@ export default function WoundCareApp() {
   };
 
   const handleExport = async () => {
-    const success = await exportDatabase({ patients, wounds, entries });
-    if (success) alert("Datenbank erfolgreich exportiert!");
+    try {
+      const plainText = JSON.stringify({ patients, wounds, entries });
+      const encrypted = await encryptData(plainText, password);
+      
+      const success = await exportDatabase(encrypted);
+      if (success) alert("Datenbank erfolgreich verschlüsselt exportiert!");
+    } catch (err) {
+      console.error(err);
+      alert("Fehler beim Verschlüsseln der Exportdatei.");
+    }
   };
 
   const handleImport = async () => {
@@ -660,18 +930,46 @@ export default function WoundCareApp() {
       const { data, handle } = result;
 
       if (confirm("Möchten Sie die aktuelle Datenbank mit der importierten Datei überschreiben?")) {
-        setPatients(data.patients || []);
-        setWounds(data.wounds || []);
-        setEntries(data.entries || []);
+        let parsedData = data;
+        
+        if (data.ciphertext) {
+          // Attempt to decrypt with current password first
+          try {
+            const decrypted = await decryptData(data, password);
+            parsedData = JSON.parse(decrypted);
+          } catch (err) {
+            // If current password fails, prompt for backup password
+            const backupPwd = window.prompt("Die importierte Datei ist verschlüsselt. Bitte geben Sie das Passwort der Sicherung ein:");
+            if (!backupPwd) return; // User cancelled
+            
+            try {
+              const decrypted = await decryptData(data, backupPwd);
+              parsedData = JSON.parse(decrypted);
+            } catch (err2) {
+              alert("Fehler: Das angegebene Passwort für die importierte Datei ist unkorrekt.");
+              return;
+            }
+          }
+        }
+        
+        setPatients(parsedData.patients || []);
+        setWounds(parsedData.wounds || []);
+        setEntries(parsedData.entries || []);
         
         if (isLocalMode) {
-          saveToLocal(data);
+          try {
+            const encrypted = await encryptData(JSON.stringify(parsedData), password);
+            saveToLocal(encrypted);
+            if (fileHandle) {
+              await saveToHandle(fileHandle, encrypted);
+            }
+          } catch (err) {
+            console.error("Verschlüsselungsfehler nach Import:", err);
+          }
           
-          // If we got a handle (via File System Access API), use it for future saves
           if (handle) {
             await storeFileHandle(handle);
             setFileHandle(handle);
-            // Verify permission immediately to ensure write access
             await verifyPermission(handle, true);
           }
         }
@@ -693,6 +991,17 @@ export default function WoundCareApp() {
   // --- Views ---
 
   if (!user) return <div className="flex items-center justify-center h-screen">Lade Anwendung...</div>;
+  if (!isDataLoaded && showPasswordModal) {
+    return (
+      <PasswordModal 
+        isOpen={showPasswordModal}
+        mode={passwordModalMode}
+        onSubmit={handlePasswordSubmit}
+        error={passwordError}
+        isLoading={cryptoLoading}
+      />
+    );
+  }
 
   return (
     <div className="flex flex-col h-screen bg-slate-100 text-slate-900 font-sans">
@@ -701,12 +1010,15 @@ export default function WoundCareApp() {
         <div className="flex items-center gap-2">
           <Activity className="w-6 h-6" />
           <h1 className="text-lg font-bold tracking-wide">WundDoku Pro</h1>
-          {/* {isLocalMode && (
-            <span className="bg-orange-500 text-xs px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-              <Database size={12} /> LOKAL
-            </span>
-          )} */}
-          {!('showSaveFilePicker' in window) && (
+          <span className={`text-xxs px-2 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+            storageMode === 'synology' 
+              ? 'bg-indigo-600 text-white border border-indigo-500' 
+              : 'bg-orange-500 text-white'
+          }`}>
+            <Database size={11} /> 
+            {storageMode === 'synology' ? 'SYNOLOGY LIVE' : 'LOKAL SECURE'}
+          </span>
+          {!('showSaveFilePicker' in window) && storageMode !== 'synology' && (
             <div className="group relative ml-1">
               <AlertTriangle className="text-orange-300 w-5 h-5 cursor-help" />
               <div className="absolute left-0 top-full mt-2 w-48 bg-slate-800 text-white text-xs p-2 rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50">
@@ -736,7 +1048,6 @@ export default function WoundCareApp() {
           <div className="text-xs opacity-80 bg-blue-800 px-2 py-1 rounded hidden md:block">
             {selectedPatient ? `Patient: ${selectedPatient.name}` : 'Übersicht'}
           </div>
-          {isLocalMode && (
              <div className="relative">
                <button 
                  onClick={() => setShowHeaderMenu(!showHeaderMenu)}
@@ -753,6 +1064,22 @@ export default function WoundCareApp() {
                      onClick={() => setShowHeaderMenu(false)}
                    />
                    <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
+                     <button 
+                       onClick={() => { setShowHeaderMenu(false); setShowSettingsModal(true); }}
+                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                     >
+                       <Database size={16} className="text-blue-500" />
+                       Speicher-Einstellungen
+                     </button>
+                     {storageMode === 'local' && (
+                       <button 
+                         onClick={() => { setShowHeaderMenu(false); setShowChangePasswordModal(true); }}
+                         className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                       >
+                         <Lock size={16} className="text-orange-500" />
+                         Passwort ändern
+                       </button>
+                     )}
                      <button 
                        onClick={() => { setShowHeaderMenu(false); handleExport(); }}
                        className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
@@ -780,7 +1107,6 @@ export default function WoundCareApp() {
                  </>
                )}
              </div>
-          )}
         </div>
       </header>
 
@@ -1051,7 +1377,7 @@ export default function WoundCareApp() {
         {/* MODAL: DELETE PATIENT CONFIRMATION */}
         <ConfirmationModal
           isOpen={showPatientDeleteConfirm}
-          title="Patient löschen?"
+          title="Patient. löschen?"
           message={`Möchten Sie "${patientToDelete?.name}" und alle zugehörigen Wunden und Verläufe wirklich unwiderruflich löschen?`}
           onConfirm={handleConfirmDeletePatient}
           onCancel={() => {
@@ -1061,6 +1387,22 @@ export default function WoundCareApp() {
           isLoading={loading}
           confirmLabel="Löschen"
           variant="danger"
+        />
+
+        {/* MODAL: CONNECTION SETTINGS */}
+        <ConnectionSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          currentMode={storageMode}
+          currentUrl={synologyUrl}
+          onSave={handleSaveConnectionSettings}
+        />
+
+        {/* MODAL: CHANGE PASSWORD */}
+        <ChangePasswordModal
+          isOpen={showChangePasswordModal}
+          onClose={() => setShowChangePasswordModal(false)}
+          onSave={handleChangePassword}
         />
 
       </main>

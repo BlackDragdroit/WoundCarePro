@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  mariadb:
+    image: mariadb:10.11
+    container_name: woundcare_mariadb
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_security_pass
+      MYSQL_DATABASE: wound_care_pro
+      MYSQL_USER: wound_user
+      MYSQL_PASSWORD: wound_password_2026
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb_data:/var/lib/mysql
+      - ./schema.sql:/docker-entrypoint-initdb.d/schema.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  server:
+    image: node:18-alpine
+    container_name: woundcare_api
+    restart: always
+    working_dir: /app
+    volumes:
+      - ../server:/app
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - DB_HOST=mariadb
+      - DB_USER=wound_user
+      - DB_PASSWORD=wound_password_2026
+      - DB_NAME=wound_care_pro
+      - DB_PORT=3306
+    depends_on:
+      - mariadb
+    command: sh -c "npm install && npm start"
+
+volumes:
+  mariadb_data:
