@@ -114,7 +114,7 @@ const runMigration = () => {
     entriesList.forEach(e => {
       sqlOutput += `INSERT INTO assessments (\n  `;
       sqlOutput += `id, wound_id, patient_id, author_id, length, width, depth, edges, phase, \n  `;
-      sqlOutput += `exudate_amount, exudate_type, surroundings, cleanser, filler, dressing, \n  `;
+      sqlOutput += `exudate_amount, exudate_type, surroundings, odor, cleanser, filler, dressing, \n  `;
       sqlOutput += `compression, compression_type, frequency, subjective_complaints, notes, image_url, created_at\n) VALUES (\n  `;
       
       sqlOutput += `${sqlVal(e.id)},\n  `;
@@ -131,6 +131,7 @@ const runMigration = () => {
       sqlOutput += `${sqlVal(e.exudateAmount)},\n  `;
       sqlOutput += `${sqlVal(e.exudateType)},\n  `;
       sqlOutput += `${sqlVal(e.surroundings)},\n  `;
+      sqlOutput += `${sqlVal(e.odor || 'Nein')},\n  `;
       
       sqlOutput += `${sqlVal(e.cleanser)},\n  `;
       sqlOutput += `${sqlVal(e.filler)},\n  `;

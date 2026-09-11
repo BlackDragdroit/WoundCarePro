@@ -15,33 +15,14 @@ import {
   CloudOff,
   AlertTriangle,
   MoreVertical,
-  Lock
+  Lock,
+  Sparkles
 } from 'lucide-react';
 
-// --- Firebase Imports & Config ---
-/*
-import { initializeApp } from 'firebase/app';
-import { 
-  getAuth, 
-  signInAnonymously, 
-  signInWithCustomToken,
-  onAuthStateChanged 
-} from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  doc, 
-  addDoc, 
-  deleteDoc,
-  getDocs, 
-  query, 
-  where, 
-  onSnapshot,
-  serverTimestamp 
-} from 'firebase/firestore';
-*/
 
 // --- Custom Components ---
+import UpdateModal from './components/UpdateModal';
+import { checkForUpdates, APP_VERSION } from './utils/updateChecker';
 import { STATUS_COLORS, STATUS_TRANSLATION } from './utils/constants';
 import BodyMap from './components/BodyMap';
 import NewPatientModal from './components/NewPatientModal';
@@ -54,7 +35,7 @@ import PasswordModal from './components/PasswordModal';
 import ConnectionSettingsModal from './components/ConnectionSettingsModal';
 import ChangePasswordModal from './components/ChangePasswordModal';
 import { formatDate } from './utils/dateHelpers';
-import { saveToLocal, loadFromLocal } from './utils/storage';
+import { saveToLocal, loadFromLocal, clearLocal } from './utils/storage';
 import { exportDatabase, importDatabase, verifyPermission, saveToHandle } from './utils/fileSystem';
 import { storeFileHandle, getFileHandle } from './utils/indexedDB';
 import { generateUUID } from './utils/helpers';
@@ -107,6 +88,9 @@ export default function WoundCareApp() {
   const [showNewWoundModal, setShowNewWoundModal] = useState(false);
   const [showLocalModeSetupModal, setShowLocalModeSetupModal] = useState(false);
   const [showHeaderMenu, setShowHeaderMenu] = useState(false);
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateInfo, setUpdateInfo] = useState(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   
   // Deletion States
   const [showWoundDeleteConfirm, setShowWoundDeleteConfirm] = useState(false);
@@ -114,6 +98,7 @@ export default function WoundCareApp() {
   const [assessmentToDelete, setAssessmentToDelete] = useState(null);
   const [showPatientDeleteConfirm, setShowPatientDeleteConfirm] = useState(false);
   const [patientToDelete, setPatientToDelete] = useState(null);
+  const [showResetStorageConfirm, setShowResetStorageConfirm] = useState(false);
 
   const [tempWoundData, setTempWoundData] = useState(null); // Stores coords + name
 
@@ -124,6 +109,26 @@ export default function WoundCareApp() {
   const [loading, setLoading] = useState(false);
 
   // --- Authentication & Setup ---
+  const handleCheckForUpdates = async (manual = false) => {
+    setIsCheckingUpdate(true);
+    if (manual) setShowUpdateModal(true);
+    try {
+      const info = await checkForUpdates(APP_VERSION);
+      setUpdateInfo(info);
+      if (!manual && info?.shouldUpdate) {
+        setShowUpdateModal(true);
+      }
+    } catch (e) {
+      console.error('Update check failed:', e);
+    } finally {
+      setIsCheckingUpdate(false);
+    }
+  };
+
+  useEffect(() => {
+    handleCheckForUpdates(false);
+  }, []);
+
   useEffect(() => {
     // Check for test mode
     const isTestMode = import.meta.env.VITE_TEST_MODE === 'true' || 
@@ -250,12 +255,13 @@ export default function WoundCareApp() {
   };
 
   // Fetch data from Synology API
-  const loadSynologyData = async () => {
+  const loadSynologyData = async (overrideUrl) => {
     try {
       setCryptoLoading(true);
-      const urlPat = `${synologyUrl}/api/patients`;
-      const urlWnd = `${synologyUrl}/api/wounds`;
-      const urlEnt = `${synologyUrl}/api/entries`;
+      const targetUrl = (overrideUrl || synologyUrl).replace(/\/$/, '');
+      const urlPat = `${targetUrl}/api/patients`;
+      const urlWnd = `${targetUrl}/api/wounds`;
+      const urlEnt = `${targetUrl}/api/entries`;
 
       const [resPatients, resWounds, resEntries] = await Promise.all([
         fetch(urlPat),
@@ -278,7 +284,7 @@ export default function WoundCareApp() {
       setShowPasswordModal(false);
     } catch (err) {
       console.error(err);
-      alert("Fehler beim Laden vom Synology Server:\n" + err.message + "\n\nDie App wird im Offline-Modus gestufen.");
+      alert("Fehler beim Laden vom Synology Server:\n" + err.message + "\n\nDie App wird im Offline-Modus gestartet.");
       setStorageMode('local');
       localStorage.setItem('wound_care_storage_mode', 'local');
     } finally {
@@ -313,7 +319,7 @@ export default function WoundCareApp() {
         }
       }
     }
-  }, [isLocalMode, storageMode]);
+  }, [isLocalMode, storageMode, synologyUrl]);
 
   // Handle password prompt submissions
   const handlePasswordSubmit = async (pwd) => {
@@ -381,12 +387,40 @@ export default function WoundCareApp() {
 
   // Save Settings handler
   const handleSaveConnectionSettings = (mode, url) => {
+    const cleanedUrl = url ? url.replace(/\/$/, '') : url;
     setStorageMode(mode);
-    setSynologyUrl(url);
+    setSynologyUrl(cleanedUrl);
     localStorage.setItem('wound_care_storage_mode', mode);
-    localStorage.setItem('wound_care_synology_url', url);
+    localStorage.setItem('wound_care_synology_url', cleanedUrl);
     setShowSettingsModal(false);
     setIsDataLoaded(false);
+
+    if (mode === 'synology') {
+      loadSynologyData(cleanedUrl);
+    }
+  };
+
+  const handleResetLocalDatabase = () => {
+    setShowResetStorageConfirm(true);
+  };
+
+  const handleConfirmResetLocalDatabase = () => {
+    clearLocal();
+    localStorage.removeItem('wound_care_db_v2');
+    localStorage.removeItem('local_mode_browser_only_ack');
+    setRawEncryptedData(null);
+    setPatients([]);
+    setWounds([]);
+    setEntries([]);
+    setPassword('');
+    setPasswordError('');
+    
+    setPasswordModalMode('setup');
+    setShowResetStorageConfirm(false);
+  };
+
+  const handleSwitchToSynologyMode = () => {
+    setShowSettingsModal(true);
   };
 
   const handleChangePassword = async (newPassword) => {
@@ -518,6 +552,8 @@ export default function WoundCareApp() {
       id: generateUUID(),
       name: patientData.name,
       dob: patientData.dob,
+      svn: patientData.svn || '',
+      kassa: patientData.kassa || '',
       mrn: `MRN-${Math.floor(Math.random() * 10000)}`,
       createdAt: new Date().toISOString()
     };
@@ -993,13 +1029,34 @@ export default function WoundCareApp() {
   if (!user) return <div className="flex items-center justify-center h-screen">Lade Anwendung...</div>;
   if (!isDataLoaded && showPasswordModal) {
     return (
-      <PasswordModal 
-        isOpen={showPasswordModal}
-        mode={passwordModalMode}
-        onSubmit={handlePasswordSubmit}
-        error={passwordError}
-        isLoading={cryptoLoading}
-      />
+      <>
+        <PasswordModal 
+          isOpen={showPasswordModal}
+          mode={passwordModalMode}
+          onSubmit={handlePasswordSubmit}
+          onResetDatabase={handleResetLocalDatabase}
+          onSwitchToSynology={handleSwitchToSynologyMode}
+          error={passwordError}
+          isLoading={cryptoLoading}
+        />
+        <ConnectionSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          currentMode={storageMode}
+          currentUrl={synologyUrl}
+          onSave={handleSaveConnectionSettings}
+        />
+        <ConfirmationModal
+          isOpen={showResetStorageConfirm}
+          title="Neuen Speicher anlegen?"
+          message="Möchten Sie die lokale Datenbank wirklich zurücksetzen? Alle bisher verschlüsselten lokalen Daten auf diesem Gerät werden gelöscht und Sie können ein neues Passwort festlegen."
+          onConfirm={handleConfirmResetLocalDatabase}
+          onCancel={() => setShowResetStorageConfirm(false)}
+          isLoading={loading}
+          confirmLabel="Speicher anlegen"
+          variant="danger"
+        />
+      </>
     );
   }
 
@@ -1045,8 +1102,16 @@ export default function WoundCareApp() {
              </button>
           </div>
           */}
-          <div className="text-xs opacity-80 bg-blue-800 px-2 py-1 rounded hidden md:block">
-            {selectedPatient ? `Patient: ${selectedPatient.name}` : 'Übersicht'}
+          <div className="text-xs opacity-90 bg-blue-900 px-3 py-1.5 rounded hidden md:block">
+            {selectedPatient ? (
+              <span>
+                Patient: <span className="font-bold text-white">{selectedPatient.name}</span>
+                {selectedPatient.svn && <span className="ml-2 font-mono">| SVN: {selectedPatient.svn}</span>}
+                {selectedPatient.kassa && <span className="ml-2">| Kassa: {selectedPatient.kassa}</span>}
+              </span>
+            ) : (
+              'Übersicht'
+            )}
           </div>
              <div className="relative">
                <button 
@@ -1065,6 +1130,13 @@ export default function WoundCareApp() {
                    />
                    <div className="absolute right-0 top-full mt-2 w-56 bg-white rounded-xl shadow-xl border border-slate-100 overflow-hidden z-50 animate-in fade-in slide-in-from-top-2">
                      <button 
+                       onClick={() => { setShowHeaderMenu(false); handleCheckForUpdates(true); }}
+                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                     >
+                       <Sparkles size={16} className="text-purple-500" />
+                       Auf Updates prüfen...
+                     </button>
+                     <button 
                        onClick={() => { setShowHeaderMenu(false); setShowSettingsModal(true); }}
                        className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
                      >
@@ -1072,36 +1144,38 @@ export default function WoundCareApp() {
                        Speicher-Einstellungen
                      </button>
                      {storageMode === 'local' && (
-                       <button 
-                         onClick={() => { setShowHeaderMenu(false); setShowChangePasswordModal(true); }}
-                         className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
-                       >
-                         <Lock size={16} className="text-orange-500" />
-                         Passwort ändern
-                       </button>
-                     )}
-                     <button 
-                       onClick={() => { setShowHeaderMenu(false); handleExport(); }}
-                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
-                     >
-                       <Upload size={16} className="text-slate-400" />
-                       Datenbank exportieren
-                     </button>
-                     <button 
-                       onClick={() => { setShowHeaderMenu(false); handleImport(); }}
-                       className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
-                     >
-                       <Download size={16} className="text-slate-400" />
-                       Datenbank importieren
-                     </button>
-                     {'showSaveFilePicker' in window && (
-                       <button 
-                         onClick={() => { setShowHeaderMenu(false); handleLocalModeSetupConfirm(); }}
-                         className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-t border-slate-50"
-                       >
-                         <Save size={16} className="text-slate-400" />
-                         {fileHandle ? 'Speicherort ändern' : 'Lokale Datei verknüpfen'}
-                       </button>
+                       <>
+                         <button 
+                           onClick={() => { setShowHeaderMenu(false); setShowChangePasswordModal(true); }}
+                           className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                         >
+                           <Lock size={16} className="text-orange-500" />
+                           Passwort ändern
+                         </button>
+                         <button 
+                           onClick={() => { setShowHeaderMenu(false); handleExport(); }}
+                           className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                         >
+                           <Upload size={16} className="text-slate-400" />
+                           Datenbank exportieren
+                         </button>
+                         <button 
+                           onClick={() => { setShowHeaderMenu(false); handleImport(); }}
+                           className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                         >
+                           <Download size={16} className="text-slate-400" />
+                           Datenbank importieren
+                         </button>
+                         {'showSaveFilePicker' in window && (
+                           <button 
+                             onClick={() => { setShowHeaderMenu(false); handleLocalModeSetupConfirm(); }}
+                             className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors"
+                           >
+                             <Save size={16} className="text-slate-400" />
+                             {fileHandle ? 'Speicherort ändern' : 'Lokale Datei verknüpfen'}
+                           </button>
+                         )}
+                       </>
                      )}
                    </div>
                  </>
@@ -1156,7 +1230,11 @@ export default function WoundCareApp() {
                     <Calendar size={14} />
                     <span>Geb.: {patient.dob}</span>
                   </div>
-                  <div className="text-xs text-slate-400 mt-2">
+                  <div className="text-xs text-slate-500 mt-2 bg-slate-50 p-2 rounded-lg space-y-0.5 border border-slate-100/50">
+                    <div><span className="text-slate-400">SVN:</span> <span className="font-mono font-medium text-slate-700">{patient.svn || '-'}</span></div>
+                    <div><span className="text-slate-400">Kassa:</span> <span className="font-medium text-slate-700">{patient.kassa || '-'}</span></div>
+                  </div>
+                  <div className="text-xs text-slate-400 mt-2.5">
                     Erstellt: {formatDate(patient.createdAt)}
                   </div>
                 </div>
@@ -1297,9 +1375,9 @@ export default function WoundCareApp() {
                               setEditingAssessment(entry);
                               setIsEditingWound(true);
                             }}
-                            patientName={selectedPatient?.name}
-                            woundLocation={selectedWound?.locationName}
-                          />
+                             patient={selectedPatient}
+                             woundLocation={selectedWound?.locationName}
+                           />
                         ))}
                         {filteredEntries.length === 0 && (
                           <div className="text-center py-20">
@@ -1403,6 +1481,27 @@ export default function WoundCareApp() {
           isOpen={showChangePasswordModal}
           onClose={() => setShowChangePasswordModal(false)}
           onSave={handleChangePassword}
+        />
+
+        {/* MODAL: RESET STORAGE CONFIRMATION */}
+        <ConfirmationModal
+          isOpen={showResetStorageConfirm}
+          title="Neuen Speicher anlegen?"
+          message="Möchten Sie die lokale Datenbank wirklich zurücksetzen? Alle bisher verschlüsselten lokalen Daten auf diesem Gerät werden gelöscht und Sie können ein neues Passwort festlegen."
+          onConfirm={handleConfirmResetLocalDatabase}
+          onCancel={() => setShowResetStorageConfirm(false)}
+          isLoading={loading}
+          confirmLabel="Speicher anlegen"
+          variant="danger"
+        />
+
+        {/* MODAL: SOFTWARE UPDATE */}
+        <UpdateModal
+          isOpen={showUpdateModal}
+          onClose={() => setShowUpdateModal(false)}
+          updateInfo={updateInfo}
+          isChecking={isCheckingUpdate}
+          onCheckAgain={() => handleCheckForUpdates(true)}
         />
 
       </main>

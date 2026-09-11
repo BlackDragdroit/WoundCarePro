@@ -4,13 +4,15 @@ import { X } from 'lucide-react';
 const NewPatientModal = ({ onCancel, onSave }) => {
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
+  const [svn, setSvn] = useState('');
+  const [kassa, setKassa] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (name && dob) {
       try {
-        console.log("Submitting form with:", name, dob);
-        await onSave({ name, dob });
+        console.log("Submitting form with:", name, dob, svn, kassa);
+        await onSave({ name, dob, svn, kassa });
         console.log("onSave completed");
       } catch (err) {
         console.error("Error in onSave:", err);
@@ -52,6 +54,29 @@ const NewPatientModal = ({ onCancel, onSave }) => {
               onChange={(e) => setDob(e.target.value)}
               className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">SVN (Sozialvers. Nr.)</label>
+              <input 
+                type="text" 
+                value={svn}
+                onChange={(e) => setSvn(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="z.B. 1234 010180"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Krankenkasse (Kassa)</label>
+              <input 
+                type="text" 
+                value={kassa}
+                onChange={(e) => setKassa(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="z.B. ÖGK, SVS"
+              />
+            </div>
           </div>
 
           <div className="pt-4 flex gap-3">

@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS patients (
     name VARCHAR(255) NOT NULL,
     dob DATE NOT NULL,
     mrn VARCHAR(50) NOT NULL UNIQUE,
+    svn VARCHAR(50) DEFAULT NULL,
+    kassa VARCHAR(100) DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     PRIMARY KEY (id)
@@ -55,8 +57,9 @@ CREATE TABLE IF NOT EXISTS assessments (
     edges VARCHAR(100) DEFAULT 'Diffus',
     phase VARCHAR(100) DEFAULT 'Granulation',
     exudate_amount VARCHAR(100) DEFAULT 'Kein',
-    exudate_type VARCHAR(100) DEFAULT 'N/A',
+    exudate_type VARCHAR(100) DEFAULT 'Serös',
     surroundings VARCHAR(100) DEFAULT 'Intakt',
+    odor VARCHAR(50) DEFAULT 'Nein',
     
     -- Therapy & Plan
     cleanser VARCHAR(255) DEFAULT 'NaCl 0.9%',

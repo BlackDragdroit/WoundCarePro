@@ -1,7 +1,15 @@
 import React, { useState } from 'react';
-import { Lock, ShieldAlert, KeyRound, Check, AlertCircle } from 'lucide-react';
+import { Lock, ShieldAlert, KeyRound, Check, AlertCircle, Server, Trash2 } from 'lucide-react';
 
-const PasswordModal = ({ isOpen, mode, onSubmit, error, isLoading }) => {
+const PasswordModal = ({ 
+  isOpen, 
+  mode, 
+  onSubmit, 
+  onResetDatabase, 
+  onSwitchToSynology, 
+  error, 
+  isLoading 
+}) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [localError, setLocalError] = useState('');
@@ -51,7 +59,7 @@ const PasswordModal = ({ isOpen, mode, onSubmit, error, isLoading }) => {
         </div>
 
         {/* Modal Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
           
           {(error || localError) && (
             <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex gap-2.5 items-start text-red-800 text-sm">
@@ -131,6 +139,38 @@ const PasswordModal = ({ isOpen, mode, onSubmit, error, isLoading }) => {
               'Datenbank entsperren'
             )}
           </button>
+
+          {/* Alternative options when unlocking to avoid lockout */}
+          {mode === 'unlock' && (
+            <div className="pt-3 border-t border-slate-100 space-y-2 text-center">
+              <p className="text-xxs text-slate-400 font-medium">Passwort vergessen oder Server nutzen?</p>
+              <div className="flex flex-col gap-2">
+                {onSwitchToSynology && (
+                  <button
+                    type="button"
+                    onClick={onSwitchToSynology}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  >
+                    <Server className="w-4 h-4 text-indigo-600" />
+                    Zu Synology NAS / Server wechseln
+                  </button>
+                )}
+
+                {onResetDatabase && (
+                  <button
+                    type="button"
+                    onClick={onResetDatabase}
+                    disabled={isLoading}
+                    className="w-full py-2.5 px-3 bg-red-50/60 hover:bg-red-50 border border-red-100 text-red-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+                  >
+                    <Trash2 className="w-4 h-4 text-red-500" />
+                    Neuen lokalen Speicher anlegen (Daten zurücksetzen)
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
         </form>
       </div>

@@ -17,7 +17,7 @@ const ConfirmationModal = ({
   const isDanger = variant === 'danger';
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 animate-fadeIn">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[1000] p-4 animate-fadeIn">
       <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full">
         <div className="flex items-start gap-4 mb-4">
           {isDanger && (

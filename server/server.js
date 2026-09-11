@@ -40,6 +40,34 @@ async function initDb() {
     const connection = await pool.getConnection();
     console.log('✔ Successfully connected to MariaDB!');
     connection.release();
+
+    // Auto-migrate schema on startup
+    try {
+      console.log("Checking if patients/assessments tables need schema updates...");
+      const [patientCols] = await pool.query('SHOW COLUMNS FROM patients');
+      const hasSvn = patientCols.some(col => col.Field === 'svn');
+      const hasKassa = patientCols.some(col => col.Field === 'kassa');
+      
+      if (!hasSvn) {
+        console.log("Adding 'svn' column to 'patients' table...");
+        await pool.query('ALTER TABLE patients ADD COLUMN svn VARCHAR(50) DEFAULT NULL');
+      }
+      if (!hasKassa) {
+        console.log("Adding 'kassa' column to 'patients' table...");
+        await pool.query('ALTER TABLE patients ADD COLUMN kassa VARCHAR(100) DEFAULT NULL');
+      }
+
+      const [assessmentCols] = await pool.query('SHOW COLUMNS FROM assessments');
+      const hasOdor = assessmentCols.some(col => col.Field === 'odor');
+      if (!hasOdor) {
+        console.log("Adding 'odor' column to 'assessments' table...");
+        await pool.query("ALTER TABLE assessments ADD COLUMN odor VARCHAR(50) DEFAULT 'Nein'");
+      }
+
+      console.log("✔ Database schema check completed!");
+    } catch (migErr) {
+      console.warn("Schema migration warning:", migErr.message);
+    }
   } catch (err) {
     console.error('✘ Database connection failed:', err.message);
     console.log('Retrying db connection in 5 seconds...');
@@ -75,7 +103,7 @@ app.get('/api/health', async (req, res) => {
 app.get('/api/patients', async (req, res) => {
   try {
     const [rows] = await pool.query(
-      'SELECT id, name, DATE_FORMAT(dob, "%Y-%m-%d") as dob, mrn, created_at as createdAt FROM patients ORDER BY name'
+      'SELECT id, name, DATE_FORMAT(dob, "%Y-%m-%d") as dob, mrn, svn, kassa, created_at as createdAt FROM patients ORDER BY name'
     );
     res.json(rows);
   } catch (err) {
@@ -84,24 +112,26 @@ app.get('/api/patients', async (req, res) => {
 });
 
 app.post('/api/patients', async (req, res) => {
-  const { id, name, dob, mrn, createdAt } = req.body;
+  const { id, name, dob, mrn, svn, kassa, createdAt } = req.body;
   if (!id || !name || !dob || !mrn) {
     return res.status(400).json({ error: 'Missing required patient fields.' });
   }
   
   try {
     const query = `
-      INSERT INTO patients (id, name, dob, mrn, created_at) 
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO patients (id, name, dob, mrn, svn, kassa, created_at) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE 
         name = VALUES(name), 
         dob = VALUES(dob), 
-        mrn = VALUES(mrn)
+        mrn = VALUES(mrn),
+        svn = VALUES(svn),
+        kassa = VALUES(kassa)
     `;
     const checkDate = dob.slice(0, 10);
     const dbCreatedVal = createdAt ? new Date(createdAt) : new Date();
 
-    await pool.query(query, [id, name, checkDate, mrn, dbCreatedVal]);
+    await pool.query(query, [id, name, checkDate, mrn, svn || null, kassa || null, dbCreatedVal]);
     res.status(200).json({ success: true, message: 'Patient saved successfully.' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -181,7 +211,7 @@ app.get('/api/entries', async (req, res) => {
       `SELECT 
         id, wound_id as woundId, patient_id as patientId, author_id as authorId,
         length, width, depth, edges, phase, 
-        exudate_amount as exudateAmount, exudate_type as exudateType, surroundings,
+        exudate_amount as exudateAmount, exudate_type as exudateType, surroundings, odor,
         cleanser, filler, dressing, compression, compression_type as compressionType,
         frequency, subjective_complaints as subjectiveComplaints, notes, image_url as imageUrl,
         created_at as createdAt 
@@ -211,10 +241,10 @@ app.post('/api/entries', async (req, res) => {
       INSERT INTO assessments (
         id, wound_id, patient_id, author_id,
         length, width, depth, edges, phase,
-        exudate_amount, exudate_type, surroundings,
+        exudate_amount, exudate_type, surroundings, odor,
         cleanser, filler, dressing, compression, compression_type,
         frequency, subjective_complaints, notes, image_url, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         length = VALUES(length),
         width = VALUES(width),
@@ -224,6 +254,7 @@ app.post('/api/entries', async (req, res) => {
         exudate_amount = VALUES(exudate_amount),
         exudate_type = VALUES(exudate_type),
         surroundings = VALUES(surroundings),
+        odor = VALUES(odor),
         cleanser = VALUES(cleanser),
         filler = VALUES(filler),
         dressing = VALUES(dressing),
@@ -240,7 +271,7 @@ app.post('/api/entries', async (req, res) => {
       e.id, e.woundId, e.patientId, e.authorId || 'local-user',
       e.length || null, e.width || null, e.depth || null, 
       e.edges || 'Diffus', e.phase || 'Granulation',
-      e.exudateAmount || 'Kein', e.exudateType || 'N/A', e.surroundings || 'Intakt',
+      e.exudateAmount || 'Kein', e.exudateType || 'Serös', e.surroundings || 'Intakt', e.odor || 'Nein',
       e.cleanser || 'NaCl 0.9%', e.filler || 'Keiner', e.dressing || 'Schaumverband',
       e.compression || 'Nein', e.compressionType || null, e.frequency || 'Täglich',
       e.subjectiveComplaints || null, e.notes || null, e.imageUrl || null, dbCreatedVal
