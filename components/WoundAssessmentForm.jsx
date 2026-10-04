@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { ChevronRight, Save, Plus, Camera } from 'lucide-react';
+import { ChevronRight, Save, Plus, Camera, Loader2 } from 'lucide-react';
 import { FormInput, FormSelect } from './ui/FormElements';
+import { compressImage } from '../utils/imageCompressor';
 
 // --- UI Components for Multi and Single Selection Pills ---
 
@@ -349,6 +350,7 @@ const parseCompression = (compression, typeStr) => {
 
 const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
   const [step, setStep] = useState(1);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [formData, setFormData] = useState(() => {
     const base = initialData || {
       length: '', width: '', depth: '',
@@ -425,14 +427,23 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleImageUpload = (e) => {
+  const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, imageUrl: reader.result }));
-      };
-      reader.readAsDataURL(file);
+      setIsCompressing(true);
+      try {
+        const compressed = await compressImage(file, 1280, 1280, 0.75);
+        setFormData(prev => ({ ...prev, imageUrl: compressed }));
+      } catch (err) {
+        console.error('Fehler bei der Bildkompression:', err);
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setFormData(prev => ({ ...prev, imageUrl: reader.result }));
+        };
+        reader.readAsDataURL(file);
+      } finally {
+        setIsCompressing(false);
+      }
     }
   };
 
@@ -536,7 +547,12 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
         {step === 1 && (
           <div className="space-y-6 animate-fadeIn">
              <div className="bg-slate-50 p-6 rounded-xl border border-slate-200 text-center">
-                {formData.imageUrl ? (
+                {isCompressing ? (
+                  <div className="py-10 flex flex-col items-center justify-center gap-2">
+                    <Loader2 size={36} className="text-blue-600 animate-spin" />
+                    <span className="text-sm font-medium text-slate-600">Bild wird optimiert & komprimiert...</span>
+                  </div>
+                ) : formData.imageUrl ? (
                   <div className="relative inline-block">
                     <img src={formData.imageUrl} alt="Preview" className="max-h-64 rounded shadow" />
                     <button 
@@ -550,7 +566,7 @@ const WoundAssessmentForm = ({ wound, onCancel, onSave, initialData }) => {
                   <label className="cursor-pointer flex flex-col items-center gap-2 py-8">
                      <Camera size={48} className="text-slate-300" />
                      <span className="text-blue-600 font-medium">Wundfoto hochladen</span>
-                     <span className="text-xs text-slate-400">Klicken für Kamera oder Galerie</span>
+                     <span className="text-xs text-slate-400">Automatisch komprimiert & optimiert</span>
                      <input type="file" accept="image/*" className="hidden" onChange={handleImageUpload} />
                   </label>
                 )}

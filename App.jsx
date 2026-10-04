@@ -641,6 +641,37 @@ export default function WoundCareApp() {
     setShowNewWoundModal(false);
     return;
     // }
+  };
+
+  const handleUpdateWoundStatus = async (woundId, newStatus) => {
+    const updatedWounds = wounds.map(w => {
+      if (w.id === woundId) {
+        return { ...w, status: newStatus };
+      }
+      return w;
+    });
+
+    setWounds(updatedWounds);
+    if (selectedWound && selectedWound.id === woundId) {
+      setSelectedWound(prev => ({ ...prev, status: newStatus }));
+    }
+
+    if (storageMode === 'synology') {
+      const woundToUpdate = updatedWounds.find(w => w.id === woundId);
+      if (woundToUpdate) {
+        try {
+          await fetch(`${synologyUrl}/api/wounds`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(woundToUpdate)
+          });
+        } catch (err) {
+          console.error("Synology Update Wound Status Error:", err);
+          alert("Fehler beim Aktualisieren des Wundstatus auf Synology.");
+        }
+      }
+    }
+  };
 
     /*
     const newWound = {
@@ -674,7 +705,6 @@ export default function WoundCareApp() {
       setShowNewWoundModal(false);
     }
     */
-  };
 
   const handleSaveAssessment = async (formData) => {
     if (!user || !selectedWound) return;
@@ -730,6 +760,11 @@ export default function WoundCareApp() {
 
       setEntries(prev => [newEntry, ...prev]);
     }
+
+    if (formData.phase && (formData.phase.includes('Geschlossen') || formData.phase === 'Geschlossen')) {
+      handleUpdateWoundStatus(selectedWound.id, 'closed');
+    }
+
     setIsEditingWound(false);
     setEditingAssessment(null);
     return;
@@ -1334,14 +1369,34 @@ export default function WoundCareApp() {
                   <div className="h-full flex flex-col">
                      {/* Nav Bar */}
                      <div className="bg-white border-b px-4 py-3 flex items-center justify-between shadow-sm z-10">
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-3">
                           <button 
                             onClick={() => setSelectedWound(null)}
                             className="md:hidden p-2 -ml-2 text-slate-500 hover:text-blue-600 rounded-lg"
                           >
                             <ArrowLeft size={20} />
                           </button>
-                          <h2 className="font-bold text-lg text-slate-800">{selectedWound.locationName} - Verlauf</h2>
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <h2 className="font-bold text-lg text-slate-800">{selectedWound.locationName}</h2>
+                            <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded-lg border border-slate-200">
+                              <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider hidden sm:inline">Status:</span>
+                              <select 
+                                value={selectedWound.status || 'active'}
+                                onChange={(e) => handleUpdateWoundStatus(selectedWound.id, e.target.value)}
+                                className={`text-xs font-semibold px-2 py-0.5 rounded border cursor-pointer outline-none transition-colors ${
+                                  selectedWound.status === 'closed'
+                                    ? 'bg-green-100 text-green-800 border-green-300'
+                                    : selectedWound.status === 'healing'
+                                    ? 'bg-yellow-100 text-yellow-800 border-yellow-300'
+                                    : 'bg-red-100 text-red-800 border-red-300'
+                                }`}
+                              >
+                                <option value="active">● Aktiv</option>
+                                <option value="healing">● Heilend</option>
+                                <option value="closed">● Geschlossen</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
 
                         <div className="flex items-center gap-3">
