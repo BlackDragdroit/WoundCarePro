@@ -7,3 +7,12 @@ export const generateUUID = () => {
     return v.toString(16);
   });
 };
+
+export const normalizeUrl = (rawUrl) => {
+  if (!rawUrl) return 'http://localhost:3000';
+  let cleaned = String(rawUrl).trim().replace(/\/+$/, '');
+  if (!/^https?:\/\//i.test(cleaned)) {
+    cleaned = `http://${cleaned}`;
+  }
+  return cleaned;
+};

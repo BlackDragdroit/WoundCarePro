@@ -1,12 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Database, Server, Wifi, WifiOff, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { normalizeUrl } from '../utils/helpers';
 
 const ConnectionSettingsModal = ({ isOpen, onClose, currentMode, currentUrl, onSave }) => {
   const [mode, setMode] = useState(currentMode || 'local');
-  const [url, setUrl] = useState(currentUrl || 'http://localhost:3000');
+  const [url, setUrl] = useState(() => normalizeUrl(currentUrl));
   const [testResult, setTestResult] = useState(null); // null | 'success' | 'error'
   const [testError, setTestError] = useState('');
   const [isTesting, setIsTesting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(currentMode || 'local');
+      setUrl(normalizeUrl(currentUrl));
+      setTestResult(null);
+      setTestError('');
+    }
+  }, [isOpen, currentMode, currentUrl]);
 
   if (!isOpen) return null;
 
@@ -15,8 +25,8 @@ const ConnectionSettingsModal = ({ isOpen, onClose, currentMode, currentUrl, onS
     setTestResult(null);
     setTestError('');
 
-    // Clean URL trailing slash
-    const targetUrl = url.replace(/\/$/, '');
+    const targetUrl = normalizeUrl(url);
+    setUrl(targetUrl);
 
     try {
       const response = await fetch(`${targetUrl}/api/health`, {
@@ -44,8 +54,7 @@ const ConnectionSettingsModal = ({ isOpen, onClose, currentMode, currentUrl, onS
   };
 
   const handleSave = () => {
-    // If Mode is server, clean URL ending
-    const cleanedUrl = url.replace(/\/$/, '');
+    const cleanedUrl = normalizeUrl(url);
     onSave(mode, cleanedUrl);
   };
 

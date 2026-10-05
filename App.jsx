@@ -16,7 +16,9 @@ import {
   AlertTriangle,
   MoreVertical,
   Lock,
-  Sparkles
+  Sparkles,
+  RefreshCw,
+  Server
 } from 'lucide-react';
 
 
@@ -38,7 +40,7 @@ import { formatDate } from './utils/dateHelpers';
 import { saveToLocal, loadFromLocal, clearLocal } from './utils/storage';
 import { exportDatabase, importDatabase, verifyPermission, saveToHandle } from './utils/fileSystem';
 import { storeFileHandle, getFileHandle } from './utils/indexedDB';
-import { generateUUID } from './utils/helpers';
+import { generateUUID, normalizeUrl } from './utils/helpers';
 import { encryptData, decryptData } from './utils/crypto';
 
 // --- Configuration ---
@@ -71,8 +73,9 @@ export default function WoundCareApp() {
     return localStorage.getItem('wound_care_storage_mode') || 'local'; // 'local' | 'synology'
   });
   const [synologyUrl, setSynologyUrl] = useState(() => {
-    return localStorage.getItem('wound_care_synology_url') || 'http://localhost:3000';
+    return normalizeUrl(localStorage.getItem('wound_care_synology_url') || 'http://localhost:3000');
   });
+  const [synologyError, setSynologyError] = useState('');
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showChangePasswordModal, setShowChangePasswordModal] = useState(false);
   
@@ -258,7 +261,8 @@ export default function WoundCareApp() {
   const loadSynologyData = async (overrideUrl) => {
     try {
       setCryptoLoading(true);
-      const targetUrl = (overrideUrl || synologyUrl).replace(/\/$/, '');
+      setSynologyError('');
+      const targetUrl = normalizeUrl(overrideUrl || synologyUrl);
       const urlPat = `${targetUrl}/api/patients`;
       const urlWnd = `${targetUrl}/api/wounds`;
       const urlEnt = `${targetUrl}/api/entries`;
@@ -270,7 +274,7 @@ export default function WoundCareApp() {
       ]);
 
       if (!resPatients.ok || !resWounds.ok || !resEntries.ok) {
-        throw new Error('Server antwortete mit einem Fehlerstatus.');
+        throw new Error(`Server antwortete mit Fehlerstatus (HTTP ${resPatients.status || resWounds.status || resEntries.status})`);
       }
 
       const pData = await resPatients.json();
@@ -282,11 +286,11 @@ export default function WoundCareApp() {
       setEntries(eData);
       setIsDataLoaded(true);
       setShowPasswordModal(false);
+      setSynologyError('');
     } catch (err) {
-      console.error(err);
-      alert("Fehler beim Laden vom Synology Server:\n" + err.message + "\n\nDie App wird im Offline-Modus gestartet.");
-      setStorageMode('local');
-      localStorage.setItem('wound_care_storage_mode', 'local');
+      console.error("Synology Load Error:", err);
+      // Persist synology setting! Never overwrite storageMode to 'local' automatically
+      setSynologyError(err.message || 'Verbindung zum Synology Server fehlgeschlagen.');
     } finally {
       setCryptoLoading(false);
     }
@@ -394,7 +398,7 @@ export default function WoundCareApp() {
 
   // Save Settings handler
   const handleSaveConnectionSettings = (mode, url) => {
-    const cleanedUrl = url ? url.replace(/\/$/, '') : url;
+    const cleanedUrl = normalizeUrl(url);
     setStorageMode(mode);
     setSynologyUrl(cleanedUrl);
     localStorage.setItem('wound_care_storage_mode', mode);
@@ -1096,6 +1100,84 @@ export default function WoundCareApp() {
   // --- Views ---
 
   if (!user) return <div className="flex items-center justify-center h-screen">Lade Anwendung...</div>;
+
+  // Synology Live connection screen (loading or connection error)
+  if (storageMode === 'synology' && !isDataLoaded) {
+    return (
+      <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[999] flex items-center justify-center p-4">
+        {cryptoLoading ? (
+          <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-sm w-full text-center space-y-4 animate-in fade-in zoom-in-95">
+            <div className="w-12 h-12 border-4 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <h3 className="font-bold text-slate-800 text-lg">Verbinde mit Synology NAS...</h3>
+            <p className="text-xs text-slate-500 font-mono break-all">{synologyUrl}</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="p-5 bg-gradient-to-r from-amber-600 to-red-600 text-white flex items-center gap-3">
+              <div className="p-2.5 bg-white/10 rounded-xl">
+                <CloudOff className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Keine Verbindung zum Synology NAS</h3>
+                <p className="text-xs text-white/80">Server antwortet nicht</p>
+              </div>
+            </div>
+            
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 text-xs text-slate-600 space-y-1">
+                <div><span className="font-semibold text-slate-700">Server-Adresse:</span> <span className="font-mono text-indigo-600 break-all">{synologyUrl}</span></div>
+                {synologyError && <div><span className="font-semibold text-slate-700">Fehler:</span> <span className="text-red-600">{synologyError}</span></div>}
+              </div>
+
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Prüfen Sie, ob Ihr NAS eingeschaltet ist, der Container <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-700">woundcare_api</code> läuft und sich Ihr Gerät im gleichen Netzwerk befindet.
+              </p>
+
+              <div className="space-y-2 pt-2">
+                <button
+                  onClick={() => loadSynologyData()}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all"
+                >
+                  <RefreshCw className="w-4 h-4" /> Erneut verbinden
+                </button>
+                <button
+                  onClick={() => setShowSettingsModal(true)}
+                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all"
+                >
+                  <Server className="w-4 h-4 text-indigo-600" /> Adresse / Port anpassen
+                </button>
+                <button
+                  onClick={() => {
+                    setStorageMode('local');
+                    localStorage.setItem('wound_care_storage_mode', 'local');
+                    const dbData = loadFromLocal();
+                    if (dbData && dbData.ciphertext) {
+                      setPasswordModalMode('unlock');
+                    } else {
+                      setPasswordModalMode('setup');
+                    }
+                    setShowPasswordModal(true);
+                  }}
+                  className="w-full py-2 text-slate-400 hover:text-slate-600 text-xs transition-colors"
+                >
+                  Zu lokalem Offline-Modus wechseln
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        <ConnectionSettingsModal
+          isOpen={showSettingsModal}
+          onClose={() => setShowSettingsModal(false)}
+          currentMode={storageMode}
+          currentUrl={synologyUrl}
+          onSave={handleSaveConnectionSettings}
+        />
+      </div>
+    );
+  }
+
   if (!isDataLoaded && (showPasswordModal || showSettingsModal)) {
     return (
       <>
