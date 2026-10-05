@@ -20,12 +20,10 @@
         "all": true,
         "request": true,
         "scope": [
-          "http://*/*",
-          "https://*/*",
-          "http://*:*/*",
-          "https://*:*/*",
           "http://*",
-          "https://*"
+          "https://*",
+          "http://*/*",
+          "https://*/*"
         ]
       }
     },
