@@ -78,6 +78,38 @@ async function initDb() {
 initDb();
 
 // -----------------------------------------------------
+// 0. Root Status Route (Browser Friendly)
+// -----------------------------------------------------
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="de">
+    <head>
+      <meta charset="utf-8">
+      <title>WundDoku Pro API Server</title>
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #f8fafc; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 16px; padding: 32px; max-width: 480px; width: 100%; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
+        .badge { display: inline-flex; align-items: center; gap: 6px; background: #10b98120; color: #34d399; padding: 4px 12px; border-radius: 9999px; font-size: 13px; font-weight: 600; margin-bottom: 16px; border: 1px solid #10b98140; }
+        .dot { width: 8px; height: 8px; border-radius: 50%; background: #34d399; }
+        h1 { margin: 0 0 8px 0; font-size: 22px; font-weight: 700; color: #fff; }
+        p { margin: 0 0 20px 0; color: #94a3b8; font-size: 14px; line-height: 1.5; }
+        .endpoint { background: #0f172a; border-radius: 8px; padding: 12px 16px; font-family: monospace; font-size: 13px; color: #818cf8; word-break: break-all; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="badge"><span class="dot"></span> Online & Bereit</div>
+        <h1>WundDoku Pro API Server</h1>
+        <p>Der Synology NAS Server läuft ordnungsgemäß und empfängt Anfragen aus der WundDoku Pro Desktop App.</p>
+        <div class="endpoint">Health Check: <a href="/api/health" style="color:#818cf8;text-decoration:none;">/api/health</a></div>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// -----------------------------------------------------
 // 1. Health Probe Route
 // -----------------------------------------------------
 app.get('/api/health', async (req, res) => {
