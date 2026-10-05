@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Database, Server, Wifi, WifiOff, X, Save, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { normalizeUrl } from '../utils/helpers';
+import { apiFetch } from '../utils/apiClient';
 
 const ConnectionSettingsModal = ({ isOpen, onClose, currentMode, currentUrl, onSave }) => {
   const [mode, setMode] = useState(currentMode || 'local');
@@ -29,7 +30,7 @@ const ConnectionSettingsModal = ({ isOpen, onClose, currentMode, currentUrl, onS
     setUrl(targetUrl);
 
     try {
-      const response = await fetch(`${targetUrl}/api/health`, {
+      const response = await apiFetch(`${targetUrl}/api/health`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' },
       });

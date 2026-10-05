@@ -1,6 +1,6 @@
 // Utility for handling application updates via Tauri Updater or GitHub Releases REST API
 
-export const APP_VERSION = '0.1.1';
+export const APP_VERSION = '0.1.2';
 export const GITHUB_REPO = 'BlackDragdroit/WoundCarePro';
 
 /**

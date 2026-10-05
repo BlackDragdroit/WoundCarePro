@@ -42,6 +42,7 @@ import { exportDatabase, importDatabase, verifyPermission, saveToHandle } from '
 import { storeFileHandle, getFileHandle } from './utils/indexedDB';
 import { generateUUID, normalizeUrl } from './utils/helpers';
 import { encryptData, decryptData } from './utils/crypto';
+import { apiFetch } from './utils/apiClient';
 
 // --- Configuration ---
 /*
@@ -268,9 +269,9 @@ export default function WoundCareApp() {
       const urlEnt = `${targetUrl}/api/entries`;
 
       const [resPatients, resWounds, resEntries] = await Promise.all([
-        fetch(urlPat),
-        fetch(urlWnd),
-        fetch(urlEnt)
+        apiFetch(urlPat),
+        apiFetch(urlWnd),
+        apiFetch(urlEnt)
       ]);
 
       if (!resPatients.ok || !resWounds.ok || !resEntries.ok) {
@@ -598,7 +599,7 @@ export default function WoundCareApp() {
     
     if (storageMode === 'synology') {
       try {
-        await fetch(`${synologyUrl}/api/patients`, {
+        await apiFetch(`${synologyUrl}/api/patients`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newPatient)
@@ -661,7 +662,7 @@ export default function WoundCareApp() {
     
     if (storageMode === 'synology') {
       try {
-        await fetch(`${synologyUrl}/api/wounds`, {
+        await apiFetch(`${synologyUrl}/api/wounds`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(newWound)
@@ -698,7 +699,7 @@ export default function WoundCareApp() {
       const woundToUpdate = updatedWounds.find(w => w.id === woundId);
       if (woundToUpdate) {
         try {
-          await fetch(`${synologyUrl}/api/wounds`, {
+          await apiFetch(`${synologyUrl}/api/wounds`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(woundToUpdate)
@@ -760,7 +761,7 @@ export default function WoundCareApp() {
       
       if (storageMode === 'synology') {
         try {
-          await fetch(`${synologyUrl}/api/entries`, {
+          await apiFetch(`${synologyUrl}/api/entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(updatedEntry)
@@ -785,7 +786,7 @@ export default function WoundCareApp() {
 
       if (storageMode === 'synology') {
         try {
-          await fetch(`${synologyUrl}/api/entries`, {
+          await apiFetch(`${synologyUrl}/api/entries`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newEntry)
@@ -843,7 +844,7 @@ export default function WoundCareApp() {
 
     if (storageMode === 'synology') {
       try {
-        await fetch(`${synologyUrl}/api/wounds/${selectedWound.id}`, {
+        await apiFetch(`${synologyUrl}/api/wounds/${selectedWound.id}`, {
           method: 'DELETE'
         });
       } catch (err) {
@@ -904,7 +905,7 @@ export default function WoundCareApp() {
 
     if (storageMode === 'synology') {
       try {
-        await fetch(`${synologyUrl}/api/entries/${assessmentToDelete}`, {
+        await apiFetch(`${synologyUrl}/api/entries/${assessmentToDelete}`, {
           method: 'DELETE'
         });
       } catch (err) {
@@ -954,7 +955,7 @@ export default function WoundCareApp() {
 
     if (storageMode === 'synology') {
       try {
-        await fetch(`${synologyUrl}/api/patients/${patientToDelete.id}`, {
+        await apiFetch(`${synologyUrl}/api/patients/${patientToDelete.id}`, {
           method: 'DELETE'
         });
       } catch (err) {

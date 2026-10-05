@@ -8,13 +8,25 @@
   },
   "package": {
     "productName": "WundDoku Pro",
-    "version": "0.1.1"
+    "version": "0.1.2"
   },
   "tauri": {
     "allowlist": {
       "all": false,
       "process": {
         "relaunch": true
+      },
+      "http": {
+        "all": true,
+        "request": true,
+        "scope": [
+          "http://*/*",
+          "https://*/*",
+          "http://*:*/*",
+          "https://*:*/*",
+          "http://*",
+          "https://*"
+        ]
       }
     },
     "bundle": {
