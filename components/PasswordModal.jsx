@@ -172,6 +172,22 @@ const PasswordModal = ({
             </div>
           )}
 
+          {/* Alternative option on setup mode: allow switching directly to online server */}
+          {mode === 'setup' && onSwitchToSynology && (
+            <div className="pt-3 border-t border-slate-100 space-y-2 text-center">
+              <p className="text-xxs text-slate-400 font-medium">Zentrale Praxis- oder Klinik-Datenbank nutzen?</p>
+              <button
+                type="button"
+                onClick={onSwitchToSynology}
+                disabled={isLoading}
+                className="w-full py-2.5 px-3 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 rounded-xl text-xs font-semibold flex items-center justify-center gap-2 transition-all active:scale-[0.98]"
+              >
+                <Server className="w-4 h-4 text-indigo-600" />
+                Stattdessen online mit Synology NAS verbinden
+              </button>
+            </div>
+          )}
+
         </form>
       </div>
     </div>
