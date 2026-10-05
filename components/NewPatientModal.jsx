@@ -41,7 +41,7 @@ const NewPatientModal = ({ onCancel, onSave }) => {
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="z.B. Maxe Mustermann"
+              placeholder="z.B. Max Mustermann"
             />
           </div>
           

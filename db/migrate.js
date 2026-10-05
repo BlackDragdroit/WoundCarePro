@@ -90,8 +90,8 @@ const runMigration = () => {
   if (patientsList.length > 0) {
     sqlOutput += `-- Exporting PATIENTS\n`;
     patientsList.forEach(p => {
-      sqlOutput += `INSERT INTO patients (id, name, dob, mrn, created_at) VALUES (\n  `;
-      sqlOutput += `${sqlVal(p.id)}, ${sqlVal(p.name)}, ${sqlVal(p.dob)}, ${sqlVal(p.mrn)}, ${sqlDate(p.createdAt)}\n);\n`;
+      sqlOutput += `INSERT INTO patients (id, name, dob, mrn, svn, kassa, created_at) VALUES (\n  `;
+      sqlOutput += `${sqlVal(p.id)}, ${sqlVal(p.name)}, ${sqlVal(p.dob)}, ${sqlVal(p.mrn)}, ${sqlVal(p.svn || null)}, ${sqlVal(p.kassa || null)}, ${sqlDate(p.createdAt)}\n);\n`;
     });
     sqlOutput += `\n`;
   }
