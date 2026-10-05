@@ -30,12 +30,35 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Prepare Signing Credentials
+        id: prepare_creds
+        shell: bash
+        run: |
+          node -e '
+            const rawKey = process.env.RAW_KEY || "";
+            const cleanKey = rawKey.trim().replace(/[\r\n\s]/g, "");
+            const rawPwd = process.env.RAW_PWD || "";
+            const cleanPwd = rawPwd.trim().replace(/[\r\n]/g, "");
+            const fs = require("fs");
+            if (process.env.GITHUB_OUTPUT) {
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `key=${cleanKey}\n`);
+              fs.appendFileSync(process.env.GITHUB_OUTPUT, `pwd=${cleanPwd}\n`);
+            }
+            if (process.env.GITHUB_ENV) {
+              fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_PRIVATE_KEY=${cleanKey}\n`);
+              fs.appendFileSync(process.env.GITHUB_ENV, `TAURI_KEY_PASSWORD=${cleanPwd}\n`);
+            }
+          '
+        env:
+          RAW_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          RAW_PWD: ${{ secrets.TAURI_KEY_PASSWORD }}
+
       - name: Build Tauri App & Create Release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+          TAURI_PRIVATE_KEY: ${{ steps.prepare_creds.outputs.key }}
+          TAURI_KEY_PASSWORD: ${{ steps.prepare_creds.outputs.pwd }}
         with:
           tagName: v__VERSION__
           releaseName: 'WundDoku Pro v__VERSION__'
