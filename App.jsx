@@ -313,9 +313,16 @@ export default function WoundCareApp() {
             setShowPasswordModal(true);
           }
         } else {
-          // Brand new database. Force user to set a password on startup to secure future inputs.
-          setPasswordModalMode('setup');
-          setShowPasswordModal(true);
+          // Brand new database. Check if user configured a mode yet
+          const savedMode = localStorage.getItem('wound_care_storage_mode');
+          if (!savedMode) {
+            // First run: let user choose between Synology and Local before asking for passwords
+            setShowPasswordModal(false);
+            setShowSettingsModal(true);
+          } else {
+            setPasswordModalMode('setup');
+            setShowPasswordModal(true);
+          }
         }
       }
     }
@@ -396,7 +403,33 @@ export default function WoundCareApp() {
     setIsDataLoaded(false);
 
     if (mode === 'synology') {
+      setShowPasswordModal(false);
       loadSynologyData(cleanedUrl);
+    } else {
+      // Local mode chosen: check if local database already exists or if we need to set up password
+      const dbData = loadFromLocal();
+      if (dbData && dbData.ciphertext) {
+        setRawEncryptedData(dbData);
+        setPasswordModalMode('unlock');
+        setShowPasswordModal(true);
+      } else {
+        setPasswordModalMode('setup');
+        setShowPasswordModal(true);
+      }
+    }
+  };
+
+  const handleCloseSettingsModal = () => {
+    setShowSettingsModal(false);
+    if (!isDataLoaded && storageMode !== 'synology') {
+      const dbData = loadFromLocal();
+      if (dbData && dbData.ciphertext) {
+        setPasswordModalMode('unlock');
+        setShowPasswordModal(true);
+      } else {
+        setPasswordModalMode('setup');
+        setShowPasswordModal(true);
+      }
     }
   };
 
@@ -420,6 +453,7 @@ export default function WoundCareApp() {
   };
 
   const handleSwitchToSynologyMode = () => {
+    setShowPasswordModal(false);
     setShowSettingsModal(true);
   };
 
@@ -1062,7 +1096,7 @@ export default function WoundCareApp() {
   // --- Views ---
 
   if (!user) return <div className="flex items-center justify-center h-screen">Lade Anwendung...</div>;
-  if (!isDataLoaded && showPasswordModal) {
+  if (!isDataLoaded && (showPasswordModal || showSettingsModal)) {
     return (
       <>
         <PasswordModal 
@@ -1076,7 +1110,7 @@ export default function WoundCareApp() {
         />
         <ConnectionSettingsModal
           isOpen={showSettingsModal}
-          onClose={() => setShowSettingsModal(false)}
+          onClose={handleCloseSettingsModal}
           currentMode={storageMode}
           currentUrl={synologyUrl}
           onSave={handleSaveConnectionSettings}
