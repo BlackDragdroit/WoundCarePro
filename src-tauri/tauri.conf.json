@@ -13,10 +13,6 @@
   "tauri": {
     "allowlist": {
       "all": false,
-      "updater": {
-        "active": true,
-        "dialog": false
-      },
       "process": {
         "relaunch": true
       }
