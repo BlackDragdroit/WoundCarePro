@@ -1,2 +1,36 @@
-node_modules
-Testdaten
+# Dependencies
+node_modules/
+
+# Local Testing & Mock Data
+Testdaten/
+
+# Production Build Artifacts (Built on-demand by Vite / Tauri CI)
+dist/
+build/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Tauri Desktop Compilation
+src-tauri/target/
+
+# Sensitive Database Exports and Migration Dumps (GDPR / Health Data Protection)
+db/import.sql
+wound-care-local-db.json
+wound-care-backup-*.zip
+database.json
+*.sql
+!db/schema.sql
+
+# Environment and Secret Configurations
+.env
+.env.*
+*.env
+!.env.example
+
+# OS & Editor Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

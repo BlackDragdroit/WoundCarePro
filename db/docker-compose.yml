@@ -6,10 +6,10 @@ services:
     container_name: woundcare_mariadb
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: root_security_pass
-      MYSQL_DATABASE: wound_care_pro
-      MYSQL_USER: wound_user
-      MYSQL_PASSWORD: wound_password_2026
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root_security_pass}
+      MYSQL_DATABASE: ${DB_NAME:-wound_care_pro}
+      MYSQL_USER: ${DB_USER:-wound_user}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-wound_password_2026}
     ports:
       - "3306:3306"
     volumes:
@@ -29,10 +29,11 @@ services:
     environment:
       - PORT=3000
       - DB_HOST=mariadb
-      - DB_USER=wound_user
-      - DB_PASSWORD=wound_password_2026
-      - DB_NAME=wound_care_pro
+      - DB_USER=${DB_USER:-wound_user}
+      - DB_PASSWORD=${DB_PASSWORD:-wound_password_2026}
+      - DB_NAME=${DB_NAME:-wound_care_pro}
       - DB_PORT=3306
+      - API_SECRET_TOKEN=${API_SECRET_TOKEN:-}
     depends_on:
       - mariadb
     command: sh -c "npm install && npm start"

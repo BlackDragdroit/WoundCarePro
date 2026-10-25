@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { 
   Plus, 
@@ -11,8 +13,6 @@ import {
   Upload,
   Download,
   Database,
-  Cloud,
-  CloudOff,
   AlertTriangle,
   MoreVertical,
   Lock,
@@ -20,7 +20,6 @@ import {
   RefreshCw,
   Server
 } from 'lucide-react';
-
 
 // --- Custom Components ---
 import UpdateModal from './components/UpdateModal';
@@ -43,15 +42,6 @@ import { storeFileHandle, getFileHandle } from './utils/indexedDB';
 import { generateUUID, normalizeUrl } from './utils/helpers';
 import { encryptData, decryptData } from './utils/crypto';
 import { apiFetch } from './utils/apiClient';
-
-// --- Configuration ---
-/*
-const firebaseConfig = JSON.parse(__firebase_config);
-const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
-const db = getFirestore(app);
-*/
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'wound-care-demo';
 
 // --- Main Application Component ---
 
@@ -134,12 +124,11 @@ export default function WoundCareApp() {
   }, []);
 
   useEffect(() => {
-    // Check for test mode
+    // Initialize active user for local / offline operation
     const isTestMode = import.meta.env.VITE_TEST_MODE === 'true' || 
                        new URLSearchParams(window.location.search).get('test_mode') === 'true';
 
     if (isTestMode) {
-      console.warn("⚠️ Application running in TEST MODE. Firebase Auth is bypassed.");
       setUser({ 
         uid: 'test-user-id', 
         isAnonymous: true, 
@@ -148,32 +137,8 @@ export default function WoundCareApp() {
       return;
     }
 
-    const initAuth = async () => {
-      try {
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.warn("Auth failed (expected in demo), falling back to demo user:", error);
-        setUser({ uid: 'demo-user', isAnonymous: true, email: 'demo@example.com' });
-      }
-    };
-    
-    /*
-    if (!isLocalMode) {
-      initAuth();
-      const unsubscribe = onAuthStateChanged(auth, (u) => {
-        if (u) setUser(u);
-      });
-      return () => unsubscribe();
-    } else {
-    */
-      // Local Mode User
-      setUser({ uid: 'local-user', isAnonymous: true, email: 'local@offline.com' });
-    // }
-  }, [isLocalMode]);
+    setUser({ uid: 'local-user', isAnonymous: true, email: 'local@offline.com' });
+  }, []);
 
   // --- Local Mode Effects ---
 
@@ -506,76 +471,7 @@ export default function WoundCareApp() {
 
     const timeoutId = setTimeout(saveData, 1000); // 1s debounce
     return () => clearTimeout(timeoutId);
-
   }, [patients, wounds, entries, isLocalMode, fileHandle, password, isDataLoaded, storageMode]);
-
-  // --- Data Fetching ---
-  
-  /*
-  // Fetch Patients
-  useEffect(() => {
-    if (!user || isLocalMode) return;
-    
-    try {
-      const q = query(collection(db, 'artifacts', appId, 'public', 'data', 'patients'));
-      const unsub = onSnapshot(q, (snapshot) => {
-        const pList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-        setPatients(pList);
-      }, (err) => {
-        console.error("Err fetching patients (using mock data)", err);
-        setPatients([
-          { id: '1', name: 'Max Mustermann', dob: '1960-05-12', mrn: 'MRN-1234' },
-          { id: '2', name: 'Erika Musterfrau', dob: '1955-08-23', mrn: 'MRN-5678' }
-        ]);
-      });
-      return () => unsub();
-    } catch (e) {
-       console.error("Setup failed", e);
-       setPatients([
-          { id: '1', name: 'Max Mustermann', dob: '1960-05-12', mrn: 'MRN-1234' },
-          { id: '2', name: 'Erika Musterfrau', dob: '1955-08-23', mrn: 'MRN-5678' }
-       ]);
-    }
-  }, [user, isLocalMode]);
-
-  // Fetch Wounds for Selected Patient
-  useEffect(() => {
-    if (!user || !selectedPatient || isLocalMode) return;
-    setLoading(true);
-    const q = query(
-      collection(db, 'artifacts', appId, 'public', 'data', 'wounds'), 
-      where('patientId', '==', selectedPatient.id)
-    );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const wList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      setWounds(wList);
-      setLoading(false);
-    }, (err) => console.error("Err fetching wounds", err));
-    return () => unsub();
-  }, [user, selectedPatient, isLocalMode]);
-
-  // Fetch Entries for Selected Wound
-  useEffect(() => {
-    if (!user || !selectedWound || isLocalMode) return;
-    setLoading(true);
-    const q = query(
-      collection(db, 'artifacts', appId, 'public', 'data', 'assessments'),
-      where('woundId', '==', selectedWound.id)
-    );
-    const unsub = onSnapshot(q, (snapshot) => {
-      const eList = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-      // Robust sort handling both Firestore Timestamps and ISO strings
-      eList.sort((a, b) => {
-        const dateA = a.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : new Date(a.createdAt);
-        const dateB = b.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : new Date(b.createdAt);
-        return dateB - dateA;
-      });
-      setEntries(eList);
-      setLoading(false);
-    }, (err) => console.error("Err fetching entries", err));
-    return () => unsub();
-  }, [user, selectedWound, isLocalMode]);
-  */
 
   // --- Action Handlers ---
 
@@ -586,11 +482,11 @@ export default function WoundCareApp() {
   const handleSavePatient = async (patientData) => {
     if (!user) return;
 
-    // if (isLocalMode) {
     const newPatient = {
       id: generateUUID(),
       name: patientData.name,
       dob: patientData.dob,
+      gender: patientData.gender || 'male',
       svn: patientData.svn || '',
       kassa: patientData.kassa || '',
       mrn: `MRN-${Math.floor(Math.random() * 10000)}`,
@@ -612,31 +508,6 @@ export default function WoundCareApp() {
 
     setPatients(prev => [...prev, newPatient]);
     setShowNewPatientModal(false);
-    return;
-    // }
-
-    /*
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (10s). Check your network connection.")), 10000)
-      );
-
-      await Promise.race([
-        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'patients'), {
-          name: patientData.name,
-          dob: patientData.dob,
-          mrn: `MRN-${Math.floor(Math.random() * 10000)}`,
-          createdAt: serverTimestamp()
-        }),
-        timeout
-      ]);
-    } catch (error) {
-      console.error("Error adding patient:", error);
-      alert("Fehler beim Speichern: " + error.message);
-    } finally {
-      setShowNewPatientModal(false);
-    }
-    */
   };
 
   const handleMapClick = (data) => {
@@ -648,7 +519,6 @@ export default function WoundCareApp() {
   const handleSaveWound = async (locationName) => {
     if (!selectedPatient || !tempWoundData) return;
 
-    // if (isLocalMode) {
     const newWound = {
       id: generateUUID(),
       patientId: selectedPatient.id,
@@ -656,6 +526,7 @@ export default function WoundCareApp() {
       x: tempWoundData.x,
       y: tempWoundData.y,
       view: tempWoundData.view || 'front',
+      regionId: tempWoundData.regionId || null,
       status: 'active',
       createdAt: new Date().toISOString()
     };
@@ -678,8 +549,6 @@ export default function WoundCareApp() {
     setTempWoundData(null);
     setIsEditingWound(true);
     setShowNewWoundModal(false);
-    return;
-    // }
   };
 
   const handleUpdateWoundStatus = async (woundId, newStatus) => {
@@ -712,39 +581,6 @@ export default function WoundCareApp() {
     }
   };
 
-    /*
-    const newWound = {
-      patientId: selectedPatient.id,
-      locationName,
-      x: tempWoundData.x,
-      y: tempWoundData.y,
-      view: tempWoundData.view || 'front',
-      status: 'active',
-      createdAt: serverTimestamp()
-    };
-
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
-      );
-
-      const docRef = await Promise.race([
-        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'wounds'), newWound),
-        timeout
-      ]);
-
-      setSelectedWound({ ...newWound, id: docRef.id });
-      setTempWoundData(null);
-      setIsEditingWound(true);
-      setCurrentView('WOUND_FORM');
-    } catch (error) {
-      console.error("Error saving wound:", error);
-      alert("Fehler beim Speichern: " + error.message);
-    } finally {
-      setShowNewWoundModal(false);
-    }
-    */
-
   const handleSaveAssessment = async (formData) => {
     if (!user || !selectedWound) return;
 
@@ -754,7 +590,6 @@ export default function WoundCareApp() {
       return;
     }
 
-    // if (isLocalMode) {
     if (editingAssessment) {
       // Update existing entry
       const updatedEntry = { ...editingAssessment, ...formData };
@@ -806,33 +641,6 @@ export default function WoundCareApp() {
 
     setIsEditingWound(false);
     setEditingAssessment(null);
-    return;
-    // }
-    
-    /*
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
-      );
-
-      await Promise.race([
-        addDoc(collection(db, 'artifacts', appId, 'public', 'data', 'assessments'), {
-          ...formData,
-          woundId: selectedWound.id,
-          patientId: selectedPatient.id,
-          authorId: user.uid,
-          createdAt: serverTimestamp()
-        }),
-        timeout
-      ]);
-
-      setIsEditingWound(false);
-      setCurrentView('WOUND_HISTORY');
-    } catch (error) {
-      console.error("Error saving assessment:", error);
-      alert("Fehler beim Speichern: " + error.message);
-    }
-    */
   };
 
   // --- Deletion Handlers ---
@@ -858,39 +666,6 @@ export default function WoundCareApp() {
     setSelectedWound(null);
     setLoading(false);
     setShowWoundDeleteConfirm(false);
-    return;
-    // }
-
-    /*
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
-      );
-
-      // 1. Delete all assessments associated with this wound (Clean up)
-      const q = query(
-        collection(db, 'artifacts', appId, 'public', 'data', 'assessments'),
-        where('woundId', '==', selectedWound.id)
-      );
-      const snapshot = await getDocs(q);
-      const deletePromises = snapshot.docs.map(d => deleteDoc(d.ref));
-      
-      await Promise.race([
-        Promise.all([...deletePromises, deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'wounds', selectedWound.id))]),
-        timeout
-      ]);
-
-      // 3. Reset UI - Success path
-      setSelectedWound(null);
-      setCurrentView('PATIENT_DETAIL'); // Go back to patient dashboard
-    } catch (error) {
-      console.error("Error deleting wound:", error);
-      alert("Fehler beim Löschen: " + error.message);
-    } finally {
-      setLoading(false);
-      setShowWoundDeleteConfirm(false); // Ensure modal closes
-    }
-    */
   };
 
   const handleDeleteAssessmentRequest = (assessmentId) => {
@@ -917,29 +692,6 @@ export default function WoundCareApp() {
     setAssessmentToDelete(null);
     setLoading(false);
     setShowAssessmentDeleteConfirm(false);
-    return;
-    // }
-
-    /*
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (5s)")), 5000)
-      );
-
-      await Promise.race([
-        deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'assessments', assessmentToDelete)),
-        timeout
-      ]);
-
-      setAssessmentToDelete(null);
-    } catch (e) {
-      console.error("Failed to delete assessment", e);
-      alert("Fehler beim Löschen: " + e.message);
-    } finally {
-      setLoading(false);
-      setShowAssessmentDeleteConfirm(false);
-    }
-    */
   };
 
   const handleDeletePatientRequest = (e, patient) => {
@@ -970,55 +722,6 @@ export default function WoundCareApp() {
     setPatientToDelete(null);
     setLoading(false);
     setShowPatientDeleteConfirm(false);
-    return;
-    // }
-
-    /*
-    try {
-      const timeout = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("Request timed out (10s)")), 10000)
-      );
-
-      // 1. Get all wounds for this patient
-      const woundsQuery = query(
-        collection(db, 'artifacts', appId, 'public', 'data', 'wounds'),
-        where('patientId', '==', patientToDelete.id)
-      );
-      const woundsSnapshot = await getDocs(woundsQuery);
-      
-      // 2. For each wound, delete its assessments and the wound itself
-      const deletePromises = [];
-      
-      for (const woundDoc of woundsSnapshot.docs) {
-        // Get assessments for this wound
-        const assessmentsQuery = query(
-          collection(db, 'artifacts', appId, 'public', 'data', 'assessments'),
-          where('woundId', '==', woundDoc.id)
-        );
-        const assessmentsSnapshot = await getDocs(assessmentsQuery);
-        assessmentsSnapshot.docs.forEach(d => deletePromises.push(deleteDoc(d.ref)));
-        
-        // Delete the wound
-        deletePromises.push(deleteDoc(woundDoc.ref));
-      }
-
-      // 3. Delete the patient
-      deletePromises.push(deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'patients', patientToDelete.id)));
-
-      await Promise.race([
-        Promise.all(deletePromises),
-        timeout
-      ]);
-
-      setPatientToDelete(null);
-    } catch (error) {
-      console.error("Error deleting patient:", error);
-      alert("Fehler beim Löschen des Patienten: " + error.message);
-    } finally {
-      setLoading(false);
-      setShowPatientDeleteConfirm(false);
-    }
-    */
   };
 
   const handleExport = async () => {
@@ -1239,25 +942,15 @@ export default function WoundCareApp() {
         
         
         <div className="flex items-center gap-3">
-          {/* Mode Toggle & Actions */}
-          {/* 
-          <div className="flex items-center bg-blue-800 rounded-lg p-1">
-             <button
-               onClick={() => setIsLocalMode(!isLocalMode)}
-               className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                 isLocalMode ? 'bg-orange-500 text-white' : 'hover:bg-blue-700 text-blue-100'
-               }`}
-               title={isLocalMode ? "Zu Cloud wechseln" : "Zu Lokal wechseln"}
-             >
-               {isLocalMode ? <CloudOff size={14} /> : <Cloud size={14} />}
-               {isLocalMode ? "Lokal" : "Cloud"}
-             </button>
-          </div>
-          */}
           <div className="text-xs opacity-90 bg-blue-900 px-3 py-1.5 rounded hidden md:block">
             {selectedPatient ? (
               <span>
                 Patient: <span className="font-bold text-white">{selectedPatient.name}</span>
+                {selectedPatient.gender && (
+                  <span className="ml-1.5 font-medium text-blue-200">
+                    ({selectedPatient.gender === 'female' ? '♀ Weiblich' : '♂ Männlich'})
+                  </span>
+                )}
                 {selectedPatient.svn && <span className="ml-2 font-mono">| SVN: {selectedPatient.svn}</span>}
                 {selectedPatient.kassa && <span className="ml-2">| Kassa: {selectedPatient.kassa}</span>}
               </span>
@@ -1363,8 +1056,13 @@ export default function WoundCareApp() {
                   className="bg-white p-5 rounded-xl shadow-sm hover:shadow-md cursor-pointer border border-slate-200 transition-all"
                 >
                   <div className="flex justify-between items-start mb-2">
-                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
+                    <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold relative">
                       {patient.name.charAt(0)}
+                      {patient.gender && (
+                        <span className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-white text-blue-600 text-[10px] font-bold border border-blue-200 flex items-center justify-center shadow-xs">
+                          {patient.gender === 'female' ? '♀' : '♂'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-mono text-slate-400">{patient.mrn}</span>
@@ -1426,7 +1124,12 @@ export default function WoundCareApp() {
                   <BodyMap 
                     markers={filteredWounds} 
                     selectedMarkerId={selectedWound?.id}
-                    onLocationSelect={handleMapClick} 
+                    onLocationSelect={handleMapClick}
+                    onSelectMarker={(w) => {
+                      setSelectedWound(w);
+                      setIsEditingWound(false);
+                    }}
+                    initialGender={selectedPatient?.gender || 'male'}
                   />
                 </div>
                 

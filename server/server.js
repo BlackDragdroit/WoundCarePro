@@ -28,7 +28,34 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+const API_SECRET_TOKEN = process.env.API_SECRET_TOKEN || '';
+
+if (!API_SECRET_TOKEN) {
+  console.warn('⚠️  SICHERHEITSHINWEIS: Keine API_SECRET_TOKEN definiert. API-Endpunkte können im Netzwerk unauthentifiziert angesprochen werden.');
+}
+
+// Authentication Middleware: Enforces API token if API_SECRET_TOKEN is set
+app.use((req, res, next) => {
+  if (!API_SECRET_TOKEN || req.path === '/' || req.path === '/api/health' || req.method === 'OPTIONS') {
+    return next();
+  }
+  
+  const authHeader = req.headers['authorization'];
+  const apiKeyHeader = req.headers['x-api-key'];
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : (apiKeyHeader || authHeader);
+  
+  if (!token || token !== API_SECRET_TOKEN) {
+    return res.status(401).json({ error: 'Unauthorized: Ungültiger oder fehlender API-Schlüssel.' });
+  }
+  next();
+});
+
 // Database connection configuration
+const isProd = process.env.NODE_ENV === 'production';
+if (isProd && (!process.env.DB_PASSWORD || process.env.DB_PASSWORD === 'wound_password_2026')) {
+  console.warn('⚠️  SICHERHEITSWARNUNG: Produktion nutzt Standard-Datenbankpasswort! Bitte in .env ändern.');
+}
+
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
   user: process.env.DB_USER || 'wound_user',

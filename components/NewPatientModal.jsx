@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 const NewPatientModal = ({ onCancel, onSave }) => {
   const [name, setName] = useState('');
   const [dob, setDob] = useState('');
+  const [gender, setGender] = useState('male');
   const [svn, setSvn] = useState('');
   const [kassa, setKassa] = useState('');
 
@@ -11,8 +12,8 @@ const NewPatientModal = ({ onCancel, onSave }) => {
     e.preventDefault();
     if (name && dob) {
       try {
-        console.log("Submitting form with:", name, dob, svn, kassa);
-        await onSave({ name, dob, svn, kassa });
+        console.log("Submitting form with:", name, dob, gender, svn, kassa);
+        await onSave({ name, dob, gender, svn, kassa });
         console.log("onSave completed");
       } catch (err) {
         console.error("Error in onSave:", err);
@@ -45,15 +46,44 @@ const NewPatientModal = ({ onCancel, onSave }) => {
             />
           </div>
           
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Geburtsdatum</label>
-            <input 
-              type="date" 
-              required
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Geburtsdatum</label>
+              <input 
+                type="date" 
+                required
+                value={dob}
+                onChange={(e) => setDob(e.target.value)}
+                className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1">Geschlecht / Modell</label>
+              <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setGender('male')}
+                  className={`py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
+                    gender === 'male'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>♂</span> Männlich
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGender('female')}
+                  className={`py-2 rounded-md text-xs font-semibold flex items-center justify-center gap-1 transition-all ${
+                    gender === 'female'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span>♀</span> Weiblich
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

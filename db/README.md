@@ -22,12 +22,18 @@ To run the database locally using Docker:
 3. Docker will download the MariaDB image and start a server on port **3306**.
 4. The tables defined in `schema.sql` are created automatically on the first startup.
 
-### Development Connection Details:
-- **Port:** `3306`
-- **Database:** `wound_care_pro`
-- **Username:** `wound_user`
-- **Password:** `wound_password_2026`
-- **Root Password:** `root_security_pass`
+### ⚠️ Wichtiger Sicherheitshinweis & Konfiguration
+Die Standard-Zugangsdaten sind ausschließlich für lokale Testumgebungen gedacht:
+- **Datenbank:** `wound_care_pro`
+- **Benutzer:** `wound_user`
+- **Standard-Passwort (nur Dev):** `wound_password_2026`
+- **Root-Passwort (nur Dev):** `root_security_pass`
+
+**Für Produktivbetrieb (z.B. Synology NAS / Server):**
+1. Kopieren Sie `db/.env.example` nach `db/.env`.
+2. Vergeben Sie in der `.env` Datei sichere Passwörter für `MYSQL_ROOT_PASSWORD` und `DB_PASSWORD`.
+3. Setzen Sie optional ein `API_SECRET_TOKEN` zur Absicherung der REST-Endpunkte.
+4. Die `.env` Datei wird über `.gitignore` geschützt und darf niemals auf GitHub übertragen werden.
 
 ---
 
