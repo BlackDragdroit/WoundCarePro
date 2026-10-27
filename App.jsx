@@ -18,7 +18,8 @@ import {
   Lock,
   Sparkles,
   RefreshCw,
-  Server
+  Server,
+  KeyRound
 } from 'lucide-react';
 
 // --- Custom Components ---
@@ -262,6 +263,28 @@ export default function WoundCareApp() {
     }
   };
 
+  // Helper to unlock database with a given password and manage session persistence
+  const unlockWithPassword = async (dbData, candidatePwd, rememberMe = true) => {
+    if (!dbData?.ciphertext) return false;
+    const decryptedText = await decryptData(dbData, candidatePwd);
+    const parsed = JSON.parse(decryptedText);
+
+    setPassword(candidatePwd);
+    sessionStorage.setItem('wound_care_session_pwd', candidatePwd);
+    if (rememberMe) {
+      localStorage.setItem('wound_care_saved_pwd', candidatePwd);
+    } else {
+      localStorage.removeItem('wound_care_saved_pwd');
+    }
+
+    setPatients(parsed.patients || []);
+    setWounds(parsed.wounds || []);
+    setEntries(parsed.entries || []);
+    setIsDataLoaded(true);
+    setShowPasswordModal(false);
+    return true;
+  };
+
   // 2. Load from Local Storage on Init (Fallback & Initial Load)
   useEffect(() => {
     if (storageMode === 'synology') {
@@ -271,10 +294,28 @@ export default function WoundCareApp() {
         const dbData = loadFromLocal();
         if (dbData) {
           if (dbData.ciphertext) {
-            // Encrypted database found. Show unlock prompt.
             setRawEncryptedData(dbData);
-            setPasswordModalMode('unlock');
-            setShowPasswordModal(true);
+            // Check if password was entered in this session or remembered on this device
+            const cachedPwd = sessionStorage.getItem('wound_care_session_pwd') || localStorage.getItem('wound_care_saved_pwd');
+            if (cachedPwd) {
+              setCryptoLoading(true);
+              const isRemembered = Boolean(localStorage.getItem('wound_care_saved_pwd'));
+              unlockWithPassword(dbData, cachedPwd, isRemembered)
+                .catch(err => {
+                  console.warn("Cached session password invalid, prompting user:", err);
+                  sessionStorage.removeItem('wound_care_session_pwd');
+                  localStorage.removeItem('wound_care_saved_pwd');
+                  setPasswordModalMode('unlock');
+                  setShowPasswordModal(true);
+                })
+                .finally(() => {
+                  setCryptoLoading(false);
+                });
+            } else {
+              // Encrypted database found. Show unlock prompt.
+              setPasswordModalMode('unlock');
+              setShowPasswordModal(true);
+            }
           } else {
             // Plaintext database found (legacy data transition).
             // Prompt user to set a password to encrypt this existing data.
@@ -299,7 +340,7 @@ export default function WoundCareApp() {
   }, [isLocalMode, storageMode, synologyUrl]);
 
   // Handle password prompt submissions
-  const handlePasswordSubmit = async (pwd) => {
+  const handlePasswordSubmit = async (pwd, rememberMe = true) => {
     setPasswordError('');
     setCryptoLoading(true);
 
@@ -307,6 +348,12 @@ export default function WoundCareApp() {
       if (passwordModalMode === 'setup') {
         // Enrolling new password!
         setPassword(pwd);
+        sessionStorage.setItem('wound_care_session_pwd', pwd);
+        if (rememberMe) {
+          localStorage.setItem('wound_care_saved_pwd', pwd);
+        } else {
+          localStorage.removeItem('wound_care_saved_pwd');
+        }
         
         // If there was legacy plaintext data in memory, encrypt and save it now
         if (rawEncryptedData && !rawEncryptedData.ciphertext) {
@@ -340,15 +387,7 @@ export default function WoundCareApp() {
           throw new Error('Keine verschlüsselten Daten gefunden.');
         }
 
-        const decryptedText = await decryptData(rawEncryptedData, pwd);
-        const parsed = JSON.parse(decryptedText);
-
-        setPassword(pwd);
-        setPatients(parsed.patients || []);
-        setWounds(parsed.wounds || []);
-        setEntries(parsed.entries || []);
-        setIsDataLoaded(true);
-        setShowPasswordModal(false);
+        await unlockWithPassword(rawEncryptedData, pwd, rememberMe);
       }
     } catch (err) {
       console.error(err);
@@ -411,6 +450,8 @@ export default function WoundCareApp() {
     clearLocal();
     localStorage.removeItem('wound_care_db_v2');
     localStorage.removeItem('local_mode_browser_only_ack');
+    sessionStorage.removeItem('wound_care_session_pwd');
+    localStorage.removeItem('wound_care_saved_pwd');
     setRawEncryptedData(null);
     setPatients([]);
     setWounds([]);
@@ -427,6 +468,28 @@ export default function WoundCareApp() {
     setShowSettingsModal(true);
   };
 
+  const handleLockDatabase = () => {
+    setShowHeaderMenu(false);
+    sessionStorage.removeItem('wound_care_session_pwd');
+    localStorage.removeItem('wound_care_saved_pwd');
+    setPassword('');
+    setPatients([]);
+    setWounds([]);
+    setEntries([]);
+    setSelectedPatient(null);
+    setSelectedWound(null);
+    setIsDataLoaded(false);
+
+    const dbData = loadFromLocal();
+    if (dbData && dbData.ciphertext) {
+      setRawEncryptedData(dbData);
+      setPasswordModalMode('unlock');
+    } else {
+      setPasswordModalMode('setup');
+    }
+    setShowPasswordModal(true);
+  };
+
   const handleChangePassword = async (newPassword) => {
     try {
       setCryptoLoading(true);
@@ -439,8 +502,12 @@ export default function WoundCareApp() {
       }
       
       setPassword(newPassword);
+      sessionStorage.setItem('wound_care_session_pwd', newPassword);
+      if (localStorage.getItem('wound_care_saved_pwd')) {
+        localStorage.setItem('wound_care_saved_pwd', newPassword);
+      }
       setShowChangePasswordModal(false);
-      alert("Passwort erfolgreich geändert! Ab dem nächsten Start müssen Sie das neue Passwort verwenden.");
+      alert("Passwort erfolgreich geändert!");
     } catch (err) {
       console.error(err);
       alert("Fehler beim Ändern des Passworts: " + err.message);
@@ -996,7 +1063,14 @@ export default function WoundCareApp() {
                          >
                            <Lock size={16} className="text-orange-500" />
                            Passwort ändern
-                         </button>
+                          </button>
+                          <button 
+                            onClick={handleLockDatabase}
+                            className="w-full text-left px-4 py-3 text-sm text-amber-700 hover:bg-amber-50 flex items-center gap-3 transition-colors border-b border-slate-100"
+                          >
+                            <KeyRound size={16} className="text-amber-500" />
+                            Datenbank sperren
+                          </button>
                          <button 
                            onClick={() => { setShowHeaderMenu(false); handleExport(); }}
                            className="w-full text-left px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-3 transition-colors border-b border-slate-100"

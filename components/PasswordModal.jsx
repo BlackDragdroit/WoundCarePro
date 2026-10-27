@@ -12,6 +12,7 @@ const PasswordModal = ({
 }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [rememberPassword, setRememberPassword] = useState(true);
   const [localError, setLocalError] = useState('');
 
   if (!isOpen) return null;
@@ -36,7 +37,7 @@ const PasswordModal = ({
       }
     }
 
-    onSubmit(password);
+    onSubmit(password, rememberPassword);
   };
 
   return (
@@ -119,6 +120,19 @@ const PasswordModal = ({
               />
             </div>
           )}
+
+          <div className="flex items-center gap-2 pt-1 pb-1">
+            <input
+              type="checkbox"
+              id="rememberPassword"
+              checked={rememberPassword}
+              onChange={(e) => setRememberPassword(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+            />
+            <label htmlFor="rememberPassword" className="text-xs text-slate-600 cursor-pointer select-none">
+              Passwort merken (beim Neuladen angemeldet bleiben)
+            </label>
+          </div>
 
           <button
             type="submit"

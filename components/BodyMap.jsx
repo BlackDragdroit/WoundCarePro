@@ -1,22 +1,28 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { RotateCw, Edit2, Check, Download, Trash2, X, Activity, Plus } from 'lucide-react';
-import defaultRegions from '../assets/defaultBodyRegions.json';
-import { getBodyPartFromCoords, getRegionFromCoords, isWoundInRegion } from '../utils/bodyPartMapper';
+import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
+import { RotateCw, Plus, X, MapPin } from 'lucide-react';
+import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK } from './bodyRegionsData';
+import {
+  MALE_FRONT_BASE,
+  MALE_FRONT_ROT,
+  MALE_FRONT_BLAU,
+  MALE_BACK_BASE,
+  MALE_BACK_ROT,
+  MALE_BACK_BLAU
+} from './BodyMapSvgSource';
+import { getRegionSlugForWound } from '../utils/bodyPartMapper';
 import { STATUS_COLORS, STATUS_TRANSLATION } from '../utils/constants';
-import { BODY_MODELS_DATA } from './bodyModelsData';
+import './BodyMap.css';
 
 const BodyMap = ({ 
   onLocationSelect, 
   markers = [], 
   selectedMarkerId, 
-  onSelectMarker,
-  initialGender = 'male'
+  onSelectMarker
 }) => {
   const [view, setView] = useState('front'); // 'front' | 'back'
-  const [gender, setGender] = useState(initialGender); // 'male' | 'female'
   const [selectedRegionId, setSelectedRegionId] = useState(null);
-  const [hoveredZoneId, setHoveredZoneId] = useState(null);
-  const [activePopoverRegion, setActivePopoverRegion] = useState(null);
+  const [hoveredRegion, setHoveredRegion] = useState(null); // { slug, name }
+  const [activePopover, setActivePopover] = useState(null); // { slug, name, wounds, center }
 
   // Scalability / Size preference (compact: 350px, normal: 420px, large: 490px)
   const [scale, setScale] = useState(() => {
@@ -28,262 +34,255 @@ const BodyMap = ({
     localStorage.setItem('woundCare_bodyMapScale', newScale);
   };
 
-  const heightClass = useMemo(() => {
-    if (scale === 'compact') return 'h-[350px]';
-    if (scale === 'large') return 'h-[490px]';
-    return 'h-[420px]';
+  const currentHeight = useMemo(() => {
+    if (scale === 'compact') return 360;
+    if (scale === 'large') return 510;
+    return 430;
   }, [scale]);
 
-  // === EDITOR STATE ===
-  const [editMode, setEditMode] = useState(false);
-  const [regions, setRegions] = useState([]);
-  const [drawingRegion, setDrawingRegion] = useState(null);
-  const [isDrawing, setIsDrawing] = useState(false);
+  // Dimension & Aspect Ratios
+  // Front: 697 x 1759 -> ~0.396
+  // Back:  683 x 1744 -> ~0.392
+  const aspectRatio = view === 'front' ? 697 / 1759 : 683 / 1744;
+  const currentWidth = Math.round(currentHeight * aspectRatio);
 
-  // Sync gender if initialGender changes (e.g. switching patient)
-  useEffect(() => {
-    if (initialGender) {
-      setGender(initialGender);
-    }
-  }, [initialGender]);
+  // Active region definitions for the current view
+  const activeRegionsData = useMemo(() => {
+    return view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+  }, [view]);
 
-  // Load regions from localStorage on mount, fallback to defaultRegions
-  useEffect(() => {
-    const saved = localStorage.getItem('woundCare_bodyRegions');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        const hasBack = Array.isArray(parsed) && parsed.some(r => r.view === 'back');
-        if (!hasBack || parsed.length < defaultRegions.length) {
-          setRegions(defaultRegions);
-        } else {
-          setRegions(parsed);
-        }
-      } catch (e) {
-        console.error("Failed to load regions", e);
-        setRegions(defaultRegions);
-      }
-    } else {
-      setRegions(defaultRegions);
-    }
-  }, []);
-
-  // Save regions to localStorage whenever they change
-  useEffect(() => {
-    if (regions.length > 0) {
-      localStorage.setItem('woundCare_bodyRegions', JSON.stringify(regions));
-    }
-  }, [regions]);
-
-  // Active SVG model data from pre-generated vector dataset
-  const modelKey = `${gender}_${view}`;
-  const modelData = useMemo(() => {
-    return BODY_MODELS_DATA[modelKey] || BODY_MODELS_DATA.male_front;
-  }, [modelKey]);
-
-  // Filter markers for current view
-  const visibleMarkers = useMemo(() => {
-    return markers.filter(m => (m.view || 'front') === view);
-  }, [markers, view]);
-
-  // Map wounds to regions of the active model
+  // Map wounds to regions of current view
   const woundsByRegion = useMemo(() => {
     const map = {};
-    if (!modelData?.zoneRects) return map;
-
-    for (const [zoneId, rect] of Object.entries(modelData.zoneRects)) {
-      map[zoneId] = visibleMarkers.filter(m => {
-        // Direct regionId match
-        if (m.regionId && m.regionId === zoneId) return true;
-
-        // Name match
-        if (m.locationName && rect.name &&
-            m.locationName.trim().toLowerCase() === rect.name.trim().toLowerCase()) {
-          return true;
-        }
-
-        // Coordinate distance match
-        if (typeof m.x === 'number' && typeof m.y === 'number') {
-          const dist = Math.hypot(m.x - rect.cx, m.y - rect.cy);
-          return dist <= 9;
-        }
-
-        return false;
-      });
+    for (const slug of Object.keys(activeRegionsData)) {
+      map[slug] = [];
     }
-    return map;
-  }, [modelData, visibleMarkers]);
 
-  // Determine active selected region ID (from direct click or active selected wound marker)
-  const activeSelectedRegionId = useMemo(() => {
-    if (selectedRegionId) return selectedRegionId;
-    if (!selectedMarkerId) return null;
+    const currentViewWounds = markers.filter(m => (m.view || 'front') === view);
 
-    if (modelData?.zoneRects) {
-      for (const [zoneId] of Object.entries(modelData.zoneRects)) {
-        if (woundsByRegion[zoneId]?.some(m => m.id === selectedMarkerId)) {
-          return zoneId;
-        }
+    for (const wound of currentViewWounds) {
+      const slug = getRegionSlugForWound(wound, view);
+      if (slug && map[slug]) {
+        map[slug].push(wound);
       }
     }
-    return null;
-  }, [selectedRegionId, selectedMarkerId, modelData, woundsByRegion]);
+    return map;
+  }, [markers, view, activeRegionsData]);
 
-  // Handle clicking on an anatomical region of the SVG
-  const handleRegionClick = (zoneId, rect) => {
-    if (editMode) return;
+  // List of slugs that currently have wounds
+  const slugsWithWounds = useMemo(() => {
+    return Object.keys(woundsByRegion).filter(slug => woundsByRegion[slug].length > 0);
+  }, [woundsByRegion]);
 
-    setSelectedRegionId(zoneId);
-    const regionWounds = woundsByRegion[zoneId] || [];
+  // If selectedMarkerId is given externally, find its region (only on matching view)
+  const markerSelectedRegionId = useMemo(() => {
+    if (!selectedMarkerId) return null;
+    const selectedMarker = markers.find(m => m.id === selectedMarkerId);
+    if (!selectedMarker) return null;
+    const markerView = selectedMarker.view || 'front';
+    if (markerView !== view) return null;
+    return getRegionSlugForWound(selectedMarker, markerView);
+  }, [selectedMarkerId, markers, view]);
+
+  // Track previous selected marker to only switch view when a new wound is selected,
+  // NOT when the user manually toggles the view.
+  const prevSelectedMarkerIdRef = useRef(selectedMarkerId);
+  useEffect(() => {
+    if (selectedMarkerId && selectedMarkerId !== prevSelectedMarkerIdRef.current) {
+      const marker = markers.find(m => m.id === selectedMarkerId);
+      if (marker?.view) {
+        setView(marker.view);
+      }
+    }
+    prevSelectedMarkerIdRef.current = selectedMarkerId;
+  }, [selectedMarkerId, markers]);
+
+  // Effective selected region ID
+  const activeSelectedRegionId = selectedRegionId || markerSelectedRegionId;
+
+  // DOM Refs for direct SVG manipulation
+  const mapContainerRef = useRef(null);
+  const baseRef = useRef(null);
+  const rotRef = useRef(null);
+  const blauRef = useRef(null);
+
+  // SVGs for the current view
+  const baseSvgHtml = view === 'front' ? MALE_FRONT_BASE : MALE_BACK_BASE;
+  const rotSvgHtml = view === 'front' ? MALE_FRONT_ROT : MALE_BACK_ROT;
+  const blauSvgHtml = view === 'front' ? MALE_FRONT_BLAU : MALE_BACK_BLAU;
+
+  // Helper: toggle visibility of region group in an overlay
+  const showOverlayRegion = (overlayEl, slug, isActive) => {
+    if (!overlayEl || !slug) return;
+    overlayEl.querySelectorAll(`.region[data-region="${slug}"]`).forEach(g => {
+      g.classList.toggle('is-active', Boolean(isActive));
+    });
+  };
+
+  // Sync Red Overlay (Info / Wounds present)
+  useLayoutEffect(() => {
+    if (!rotRef.current) return;
+    rotRef.current.querySelectorAll('.region').forEach(g => {
+      const slug = g.dataset.region;
+      const hasWounds = slugsWithWounds.includes(slug);
+      g.classList.toggle('is-active', hasWounds);
+    });
+  }, [slugsWithWounds, view, rotSvgHtml]);
+
+  // Sync Blue Overlay (Selection & Hover)
+  useLayoutEffect(() => {
+    if (!blauRef.current) return;
+    blauRef.current.querySelectorAll('.region').forEach(g => {
+      const slug = g.dataset.region;
+      const isSelected = slug === activeSelectedRegionId;
+      const isHovered = slug === hoveredRegion?.slug;
+      g.classList.toggle('is-active', Boolean(isSelected || isHovered));
+    });
+  }, [activeSelectedRegionId, hoveredRegion, view, blauSvgHtml]);
+
+  // Toggle View Handler
+  const toggleView = (e) => {
+    e.stopPropagation();
+    setView(v => v === 'front' ? 'back' : 'front');
+    setSelectedRegionId(null);
+    setHoveredRegion(null);
+    setActivePopover(null);
+  };
+
+  // Hit-testing Event Handlers
+  const handlePointerOver = (e) => {
+    const regionEl = e.target.closest('[data-region]');
+    if (!regionEl) return;
+    const slug = regionEl.dataset.region;
+    const name = regionEl.dataset.name;
+    if (!slug) return;
+
+    // Prevent re-trigger / flickering when moving across adjacent paths of the same region
+    const fromSlug = e.relatedTarget?.closest?.('[data-region]')?.dataset.region;
+    if (fromSlug === slug) return;
+
+    setHoveredRegion({ slug, name });
+
+    // Instantly highlight in blue overlay for zero-latency response
+    showOverlayRegion(blauRef.current, slug, true);
+  };
+
+  const handlePointerOut = (e) => {
+    const regionEl = e.target.closest('[data-region]');
+    if (!regionEl) return;
+    const slug = regionEl.dataset.region;
+    if (!slug) return;
+
+    // Prevent re-trigger / flickering when moving across adjacent paths of the same region
+    const toSlug = e.relatedTarget?.closest?.('[data-region]')?.dataset.region;
+    if (toSlug === slug) return;
+
+    setHoveredRegion(null);
+
+    // Turn off blue overlay unless this region is actively selected
+    if (slug !== activeSelectedRegionId) {
+      showOverlayRegion(blauRef.current, slug, false);
+    }
+  };
+
+  const handleRegionSelect = (slug, name, clientCoords) => {
+    setSelectedRegionId(slug);
+    const regionWounds = woundsByRegion[slug] || [];
+    const meta = activeRegionsData[slug];
 
     if (regionWounds.length > 0) {
-      // Area has wounds: toggle popover with list of wounds
-      setActivePopoverRegion(prev => prev?.id === zoneId ? null : { id: zoneId, ...rect });
+      // Area has wounds: toggle interactive popover
+      setActivePopover(prev => (prev?.slug === slug ? null : {
+        slug,
+        name,
+        wounds: regionWounds,
+        center: meta?.center || { pctX: 50, pctY: 50 }
+      }));
     } else {
-      // Area has no wounds: close popover and trigger new wound creation for this region
-      setActivePopoverRegion(null);
+      // Area has no wounds: close popover and trigger new wound creation modal
+      setActivePopover(null);
       if (onLocationSelect) {
         onLocationSelect({
-          x: rect.cx,
-          y: rect.cy,
+          x: clientCoords?.pctX ?? meta?.center?.pctX ?? 50,
+          y: clientCoords?.pctY ?? meta?.center?.pctY ?? 50,
           view,
-          partName: rect.name,
-          regionId: zoneId
+          partName: name || meta?.name || slug,
+          regionId: slug
         });
       }
     }
   };
 
-  // === MOUSE HANDLERS FOR EDIT MODE ===
-  const handleMouseDown = (e) => {
-    if (!editMode) return;
+  const handleMapClick = (e) => {
+    // If click was inside the popover card, ignore
+    if (e.target.closest('.wound-popover')) return;
 
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const cx = ((e.clientX - rect.left) / rect.width) * 100;
-    const cy = ((e.clientY - rect.top) / rect.height) * 100;
-
-    setIsDrawing(true);
-    setDrawingRegion({ cx, cy, r: 0, view });
-  };
-
-  const handleMouseMove = (e) => {
-    if (!isDrawing || !editMode) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    const currentX = ((e.clientX - rect.left) / rect.width) * 100;
-    const currentY = ((e.clientY - rect.top) / rect.height) * 100;
-
-    const dist = Math.hypot(currentX - drawingRegion.cx, currentY - drawingRegion.cy);
-    setDrawingRegion(prev => ({ ...prev, r: dist }));
-  };
-
-  const handleMouseUp = () => {
-    if (!isDrawing || !editMode) return;
-    setIsDrawing(false);
-
-    if (drawingRegion.r < 1) {
-      setDrawingRegion(null);
+    const regionEl = e.target.closest('[data-region]');
+    if (!regionEl) {
+      // Clicked outside any region -> clear selection & close popover
+      setSelectedRegionId(null);
+      setActivePopover(null);
       return;
     }
 
-    const name = window.prompt("Name der Körperregion:", "Neue Region");
-    if (name) {
-      const newRegion = {
-        id: Date.now().toString(),
-        name,
-        view: drawingRegion.view,
-        cx: drawingRegion.cx,
-        cy: drawingRegion.cy,
-        r: drawingRegion.r,
-        type: 'circle'
-      };
-      setRegions(prev => [...prev, newRegion]);
+    const slug = regionEl.dataset.region;
+    const name = regionEl.dataset.name;
+    if (!slug) return;
+
+    // Calculate click coordinates in percent (0-100%)
+    let clientCoords = null;
+    if (mapContainerRef.current) {
+      const rect = mapContainerRef.current.getBoundingClientRect();
+      const pctX = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+      const pctY = Math.round(((e.clientY - rect.top) / rect.height) * 100);
+      clientCoords = { pctX, pctY };
     }
 
-    setDrawingRegion(null);
+    handleRegionSelect(slug, name, clientCoords);
   };
 
-  const deleteRegion = (e, id) => {
-    e.stopPropagation();
-    if (window.confirm("Region löschen?")) {
-      setRegions(prev => prev.filter(r => r.id !== id));
+  // Determine active region name for the top badge
+  const activeRegionName = useMemo(() => {
+    if (hoveredRegion?.name) {
+      const woundCount = (woundsByRegion[hoveredRegion.slug] || []).length;
+      return `${hoveredRegion.name}${woundCount > 0 ? ` (${woundCount} Wunde${woundCount > 1 ? 'n' : ''})` : ''}`;
     }
-  };
-
-  const handleExport = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(regions, null, 2));
-    const downloadAnchorNode = document.createElement('a');
-    downloadAnchorNode.setAttribute("href", dataStr);
-    downloadAnchorNode.setAttribute("download", "bodyRegions.json");
-    document.body.appendChild(downloadAnchorNode);
-    downloadAnchorNode.click();
-    downloadAnchorNode.remove();
-  };
-
-  const toggleView = (e) => {
-    e.stopPropagation();
-    setView(v => v === 'front' ? 'back' : 'front');
-    setSelectedRegionId(null);
-    setActivePopoverRegion(null);
-  };
+    if (activeSelectedRegionId && activeRegionsData[activeSelectedRegionId]) {
+      const woundCount = (woundsByRegion[activeSelectedRegionId] || []).length;
+      return `${activeRegionsData[activeSelectedRegionId].name}${woundCount > 0 ? ` (${woundCount} Wunde${woundCount > 1 ? 'n' : ''})` : ''}`;
+    }
+    return null;
+  }, [hoveredRegion, activeSelectedRegionId, activeRegionsData, woundsByRegion]);
 
   return (
     <div className="relative w-full mx-auto bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden select-none">
       
-      {/* Top Left Controls: Gender Switch (Male / Female) & Active Region Badge */}
-      <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 flex-wrap">
-        {/* Gender Switch (Male / Female) */}
-        <div className="flex bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 p-0.5 text-xs font-semibold">
-          <button
-            onClick={(e) => { e.stopPropagation(); setGender('male'); }}
-            className={`px-2 py-1 rounded-md transition-all flex items-center gap-1 ${
-              gender === 'male'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-            title="Männliches Körpermodell"
-          >
-            <span>♂</span>
-            <span className="hidden sm:inline">Männlich</span>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); setGender('female'); }}
-            className={`px-2 py-1 rounded-md transition-all flex items-center gap-1 ${
-              gender === 'female'
-                ? 'bg-blue-600 text-white shadow-xs font-bold'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-            }`}
-            title="Weibliches Körpermodell"
-          >
-            <span>♀</span>
-            <span className="hidden sm:inline">Weiblich</span>
-          </button>
-        </div>
+      {/* Top Left Controls: View Label & Active Region Badge */}
+      <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 flex-wrap pointer-events-none">
+        <span className="px-2 py-1 bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 pointer-events-auto">
+          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
+          {view === 'front' ? 'Vorderansicht' : 'Rückansicht'}
+        </span>
 
-        {/* Selected Region / Editor Badge */}
-        {activeSelectedRegionId && modelData?.zoneRects?.[activeSelectedRegionId] && (
-          <span className="px-2 py-1 bg-red-100 text-red-700 rounded-lg text-[10px] font-bold shadow-xs border border-red-200 animate-in fade-in">
-            {modelData.zoneRects[activeSelectedRegionId].name}
-          </span>
-        )}
-        {editMode && (
-          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-[10px] font-bold shadow-xs border border-blue-200">
-            EDITOR
+        {/* Dynamic Hover / Selected Region Badge */}
+        {activeRegionName && (
+          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold shadow-xs border border-blue-200 animate-in fade-in transition-all">
+            {activeRegionName}
           </span>
         )}
       </div>
 
       {/* Top Right Controls Bar */}
-      <div className="absolute top-2.5 right-2.5 z-20 flex items-center gap-1.5 flex-wrap justify-end">
+      <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 flex-wrap justify-end pointer-events-auto">
         {/* View Toggle (Front / Back) */}
         <button 
+          type="button"
           onClick={toggleView} 
-          className="px-2 py-1 bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 hover:bg-white text-slate-700 flex items-center gap-1 text-xs font-medium transition-colors" 
-          title="Ansicht drehen"
+          className="px-2.5 py-1 bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 hover:bg-slate-100 text-slate-700 flex items-center gap-1.5 text-xs font-semibold transition-colors cursor-pointer" 
+          title="Ansicht drehen (Vorderseite / Rückseite)"
         >
           <RotateCw size={13} className="text-blue-600" />
-          <span className="hidden sm:inline">{view === 'front' ? 'Rückseite' : 'Vorderseite'}</span>
+          <span>{view === 'front' ? 'Rückseite' : 'Vorderseite'}</span>
         </button>
 
         {/* Scale Toggle (S / M / L) */}
@@ -293,7 +292,7 @@ const BodyMap = ({
             className={`px-1.5 py-0.5 rounded transition-all text-[10px] ${
               scale === 'compact' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
-            title="Kompakt (350px Höhe)"
+            title="Kompakt (360px Höhe)"
           >
             S
           </button>
@@ -302,7 +301,7 @@ const BodyMap = ({
             className={`px-1.5 py-0.5 rounded transition-all text-[10px] ${
               scale === 'normal' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
-            title="Mittel (420px Höhe)"
+            title="Mittel (430px Höhe)"
           >
             M
           </button>
@@ -311,248 +310,91 @@ const BodyMap = ({
             className={`px-1.5 py-0.5 rounded transition-all text-[10px] ${
               scale === 'large' ? 'bg-blue-600 text-white font-bold shadow-xs' : 'text-slate-500 hover:text-slate-800'
             }`}
-            title="Groß (490px Höhe)"
+            title="Groß (510px Höhe)"
           >
             L
           </button>
         </div>
-        
-        {/* Edit Button */}
-        <button 
-          onClick={() => {
-            setEditMode(!editMode);
-            setActivePopoverRegion(null);
-          }} 
-          className={`p-1.5 rounded-lg shadow-sm border transition-colors ${
-            editMode 
-              ? 'bg-blue-600 text-white border-blue-700' 
-              : 'bg-white/95 text-slate-600 hover:bg-white border-slate-200'
-          }`}
-          title={editMode ? "Editor beenden" : "Regionen bearbeiten"}
-        >
-          {editMode ? <Check size={14} /> : <Edit2 size={14} />}
-        </button>
-
-        {/* Export Button (Only in Edit Mode) */}
-        {editMode && (
-          <button 
-            onClick={handleExport} 
-            className="p-1.5 bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 hover:bg-white text-slate-600" 
-            title="Konfiguration speichern"
-          >
-            <Download size={14} />
-          </button>
-        )}
       </div>
 
       {/* Main Interactive Canvas */}
       <div 
-        className="relative bg-slate-50 flex items-center justify-center pt-12 pb-3 px-3 min-h-[380px]"
+        className="bodymap-wrapper bg-slate-50 pt-12 pb-4 px-4 min-h-[400px]"
         onClick={() => {
-          if (!editMode) {
-            setSelectedRegionId(null);
-            setActivePopoverRegion(null);
-          }
+          setSelectedRegionId(null);
+          setActivePopover(null);
         }}
       >
-        {/* Figure Wrapper - bounds match the SVG exactly */}
+        {/* Figure Container - Dimensions match the SVG aspect ratio perfectly */}
         <div 
-          className={`relative w-fit mx-auto ${editMode ? 'cursor-crosshair' : 'cursor-default'}`}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          ref={mapContainerRef}
+          className="bodymap relative cursor-default drop-shadow-sm select-none"
+          style={{ 
+            height: `${currentHeight}px`, 
+            width: `${currentWidth}px` 
+          }}
+          onClick={handleMapClick}
+          onPointerOver={handlePointerOver}
+          onPointerOut={handlePointerOut}
         >
-          {/* Native Inline Interactive SVG Model */}
-          <svg
-            viewBox={modelData.viewBox}
-            className={`${heightClass} w-auto max-w-full drop-shadow-sm select-none transition-all duration-300 block`}
-            style={{ overflow: 'visible' }}
-          >
-            <defs>
-              {/* WoundCarePro Signature Medical Body Gradient */}
-              <linearGradient id={`bodyGrad_${modelKey}`} x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#eff6ff" />
-                <stop offset="45%" stopColor="#dbeafe" />
-                <stop offset="85%" stopColor="#bfdbfe" />
-                <stop offset="100%" stopColor="#93c5fd" />
-              </linearGradient>
+          {/* Layer 1: Base SVG (Silhouette & Contours & Region Hit Areas) */}
+          <div 
+            ref={baseRef}
+            className="base-layer w-full h-full"
+            dangerouslySetInnerHTML={{ __html: baseSvgHtml }}
+          />
 
-              {/* Selected Anatomical Region Gradient (Red Highlight) */}
-              <linearGradient id={`selectedGrad_${modelKey}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#f87171" />
-                <stop offset="100%" stopColor="#ef4444" />
-              </linearGradient>
+          {/* Layer 2: Red Overlay ("Info vorhanden" - Regions with wounds) */}
+          <div 
+            ref={rotRef}
+            className="ov-layer ov-rot-layer absolute inset-0 pointer-events-none w-full h-full"
+            dangerouslySetInnerHTML={{ __html: rotSvgHtml }}
+          />
 
-              {/* Region With Wounds Gradient (WoundCarePro Signature Medical Blue) */}
-              <linearGradient id={`woundGrad_${modelKey}`} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#60a5fa" />
-                <stop offset="100%" stopColor="#2563eb" />
-              </linearGradient>
+          {/* Layer 3: Blue Overlay (Hover / Selection) */}
+          <div 
+            ref={blauRef}
+            className="ov-layer ov-blau-layer absolute inset-0 pointer-events-none w-full h-full"
+            dangerouslySetInnerHTML={{ __html: blauSvgHtml }}
+          />
 
-              {/* ClipPaths for all anatomical body regions */}
-              {Object.entries(modelData.zoneRects).map(([zoneId, rect]) => (
-                <clipPath key={zoneId} id={`clip-${modelKey}-${zoneId}`}>
-                  <rect x={rect.rx} y={rect.ry} width={rect.rw} height={rect.rh} />
-                </clipPath>
-              ))}
-            </defs>
+          {/* Layer 4: Wound Count Badges on Regions With Wounds */}
+          {slugsWithWounds.map(slug => {
+            const meta = activeRegionsData[slug];
+            if (!meta?.center) return null;
+            const count = (woundsByRegion[slug] || []).length;
+            const isSelected = activeSelectedRegionId === slug;
 
-            {/* LAYER 1: Interactive Anatomical Body Regions */}
-            <g id={`body-regions-${modelKey}`}>
-              {Object.entries(modelData.zoneRects).map(([zoneId, rect]) => {
-                const regionWounds = woundsByRegion[zoneId] || [];
-                const hasWounds = regionWounds.length > 0;
-                const isSelected = activeSelectedRegionId === zoneId;
-                const isHovered = hoveredZoneId === zoneId;
-
-                let fill = `url(#bodyGrad_${modelKey})`;
-                let stroke = "none";
-                let strokeWidth = 0;
-
-                if (isSelected) {
-                  // Marked in vivid RED as requested!
-                  fill = `url(#selectedGrad_${modelKey})`;
-                  stroke = "#b91c1c";
-                  strokeWidth = 2;
-                } else if (hasWounds) {
-                  // Marked in characteristic WoundCarePro blue!
-                  fill = `url(#woundGrad_${modelKey})`;
-                  stroke = "#1d4ed8";
-                  strokeWidth = 1.5;
-                } else if (isHovered) {
-                  // Interactive hover highlight
-                  fill = "#93c5fd";
-                  stroke = "#3b82f6";
-                  strokeWidth = 1;
-                }
-
-                return (
-                  <path
-                    key={zoneId}
-                    id={`region-${modelKey}-${zoneId}`}
-                    d={modelData.silhouetteD}
-                    clipPath={`url(#clip-${modelKey}-${zoneId})`}
-                    fill={fill}
-                    stroke={stroke}
-                    strokeWidth={strokeWidth}
-                    className="cursor-pointer transition-colors duration-150"
-                    onMouseEnter={() => setHoveredZoneId(zoneId)}
-                    onMouseLeave={() => setHoveredZoneId(null)}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRegionClick(zoneId, rect);
-                    }}
-                  >
-                    <title>
-                      {rect.name}{hasWounds ? ` (${regionWounds.length} Wunde${regionWounds.length > 1 ? 'n' : ''})` : ''}
-                    </title>
-                  </path>
-                );
-              })}
-            </g>
-
-            {/* LAYER 2: Anatomical Contour Lines (Remain Crisp Jet Black) */}
-            <g className="pointer-events-none select-none" fill="#0f172a">
-              {modelData.contourPaths.map((p, idx) => (
-                <path 
-                  key={idx} 
-                  d={p.d} 
-                  fillRule={p.evenOdd ? 'evenodd' : undefined} 
-                />
-              ))}
-            </g>
-
-            {/* LAYER 3: Wound Count Badges at region center (cx, cy) */}
-            {!editMode && Object.entries(modelData.zoneRects).map(([zoneId, rect]) => {
-              const regionWounds = woundsByRegion[zoneId] || [];
-              if (regionWounds.length === 0) return null;
-
-              const isSelected = activeSelectedRegionId === zoneId;
-              const badgeX = (rect.cx / 100) * modelData.w;
-              const badgeY = (rect.cy / 100) * modelData.h;
-              const count = regionWounds.length;
-
-              return (
-                <g 
-                  key={`badge-${zoneId}`} 
-                  transform={`translate(${badgeX}, ${badgeY})`}
-                  className="cursor-pointer pointer-events-auto transition-transform hover:scale-110"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleRegionClick(zoneId, rect);
-                  }}
-                >
-                  <circle 
-                    r={22} 
-                    fill={isSelected ? "#ef4444" : "#2563eb"} 
-                    stroke="#ffffff" 
-                    strokeWidth={3} 
-                    className="filter drop-shadow-md"
-                  />
-                  <text 
-                    textAnchor="middle" 
-                    dy="5.5" 
-                    fill="#ffffff" 
-                    fontSize="16" 
-                    fontWeight="bold" 
-                    fontFamily="system-ui, -apple-system, sans-serif"
-                    className="select-none pointer-events-none"
-                  >
-                    {count}
-                  </text>
-                </g>
-              );
-            })}
-          </svg>
-
-          {/* EDIT MODE: Render Custom Regions */}
-          {editMode && regions.filter(r => (r.view || 'front') === view).map(params => (
-            <div
-              key={params.id}
-              className="absolute border-2 border-blue-500 bg-blue-500/20 rounded-full group hover:bg-blue-500/40 z-10 transition-colors"
-              style={{
-                left: `${params.cx - params.r}%`,
-                top: `${params.cy - params.r}%`,
-                width: `${params.r * 2}%`,
-                height: `${params.r * 2}%`
-              }}
-              title={params.name}
-            >
-              <span className="absolute -top-6 left-1/2 -translate-x-1/2 bg-slate-900/80 text-white text-[10px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap pointer-events-none">
-                {params.name}
-              </span>
-              
-              <button 
-                onClick={(e) => deleteRegion(e, params.id)}
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 hover:scale-110 transition-all shadow"
-                title="Löschen"
+            return (
+              <div
+                key={`badge-${slug}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleRegionSelect(slug, meta.name);
+                }}
+                className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 flex items-center justify-center min-w-5 h-5 px-1 rounded-full text-[10px] font-bold shadow-md cursor-pointer transition-transform hover:scale-125 ${
+                  isSelected 
+                    ? 'bg-blue-600 text-white ring-2 ring-white ring-offset-1' 
+                    : 'bg-red-600 text-white ring-2 ring-white ring-offset-1'
+                }`}
+                style={{
+                  left: `${meta.center.pctX}%`,
+                  top: `${meta.center.pctY}%`
+                }}
+                title={`${meta.name}: ${count} Wunde${count > 1 ? 'n' : ''}`}
               >
-                <X size={12} />
-              </button>
-            </div>
-          ))}
-          
-          {/* Active Drawing in Edit Mode */}
-          {drawingRegion && (
-            <div
-              className="absolute border-2 border-red-500 bg-red-500/20 rounded-full z-20 pointer-events-none"
-              style={{
-                left: `${drawingRegion.cx - drawingRegion.r}%`,
-                top: `${drawingRegion.cy - drawingRegion.r}%`,
-                width: `${drawingRegion.r * 2}%`,
-                height: `${drawingRegion.r * 2}%`
-              }}
-            />
-          )}
+                {count}
+              </div>
+            );
+          })}
 
-          {/* Interactive Info Popover on pressing a region with wounds */}
-          {activePopoverRegion && !editMode && (
+          {/* Layer 5: Interactive Wound Popover Card */}
+          {activePopover && (
             <div 
-              className="absolute z-50 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 max-w-xs w-64 animate-in fade-in zoom-in-95"
+              className="wound-popover absolute z-50 bg-white rounded-xl shadow-2xl border border-slate-200 p-3 max-w-xs w-64 animate-in fade-in zoom-in-95 pointer-events-auto"
               style={{
-                left: `${Math.min(Math.max(activePopoverRegion.cx, 25), 75)}%`,
-                top: `${Math.min(Math.max(activePopoverRegion.cy + 6, 12), 75)}%`,
+                left: `${Math.min(Math.max(activePopover.center.pctX, 26), 74)}%`,
+                top: `${Math.min(Math.max(activePopover.center.pctY + 4, 10), 75)}%`,
                 transform: 'translate(-50%, 0)'
               }}
               onClick={(e) => e.stopPropagation()}
@@ -561,17 +403,18 @@ const BodyMap = ({
                 <div>
                   <h4 className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-                    {activePopoverRegion.name}
+                    {activePopover.name}
                   </h4>
                   <p className="text-[10px] text-slate-500 font-medium">
-                    {(woundsByRegion[activePopoverRegion.id] || []).length} {
-                      (woundsByRegion[activePopoverRegion.id] || []).length === 1 ? 'Wunde erfasst' : 'Wunden erfasst'
+                    {activePopover.wounds.length} {
+                      activePopover.wounds.length === 1 ? 'Wunde erfasst' : 'Wunden erfasst'
                     }
                   </p>
                 </div>
                 <button 
-                  onClick={() => setActivePopoverRegion(null)}
+                  onClick={() => setActivePopover(null)}
                   className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  title="Schließen"
                 >
                   <X size={14} />
                 </button>
@@ -579,16 +422,16 @@ const BodyMap = ({
 
               {/* List of wounds in this region */}
               <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                {(woundsByRegion[activePopoverRegion.id] || []).map((w) => (
+                {activePopover.wounds.map((w) => (
                   <div
                     key={w.id}
                     onClick={() => {
                       if (onSelectMarker) onSelectMarker(w);
-                      setSelectedRegionId(activePopoverRegion.id);
+                      setSelectedRegionId(activePopover.slug);
                     }}
                     className={`p-2 rounded-lg border text-xs cursor-pointer flex justify-between items-center transition-all ${
                       selectedMarkerId === w.id 
-                        ? 'bg-red-50 border-red-300 text-red-900 font-semibold' 
+                        ? 'bg-blue-50 border-blue-300 text-blue-900 font-semibold shadow-xs' 
                         : 'bg-slate-50 hover:bg-blue-50 hover:border-blue-200 border-slate-200 text-slate-700'
                     }`}
                   >
@@ -603,14 +446,14 @@ const BodyMap = ({
               {/* Action: Add new wound to this region */}
               <button
                 onClick={() => {
-                  setActivePopoverRegion(null);
+                  setActivePopover(null);
                   if (onLocationSelect) {
                     onLocationSelect({
-                      x: activePopoverRegion.cx,
-                      y: activePopoverRegion.cy,
+                      x: activePopover.center.pctX,
+                      y: activePopover.center.pctY,
                       view,
-                      partName: activePopoverRegion.name,
-                      regionId: activePopoverRegion.id
+                      partName: activePopover.name,
+                      regionId: activePopover.slug
                     });
                   }
                 }}
@@ -621,30 +464,25 @@ const BodyMap = ({
               </button>
             </div>
           )}
+
         </div>
       </div>
       
       {/* Bottom Info Bar / Legend */}
       <div className="px-3 py-2 text-center text-xs text-slate-600 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-        {editMode ? (
-          <span className="text-blue-700 font-medium">Ziehen zum Erstellen von neuen Regionen</span>
-        ) : (
-          <>
-            <span className="flex items-center gap-1.5 text-slate-500">
-              Körperregion antippen zum Erfassen &amp; Auswählen
-            </span>
-            <div className="flex items-center gap-3 text-[11px]">
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
-                Bereich mit Wunde(n)
-              </span>
-              <span className="flex items-center gap-1">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
-                Ausgewählte Region
-              </span>
-            </div>
-          </>
-        )}
+        <span className="flex items-center gap-1.5 text-slate-500">
+          Körperregion antippen zum Erfassen &amp; Auswählen
+        </span>
+        <div className="flex items-center gap-3 text-[11px]">
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
+            Region mit Wunde(n)
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="w-2.5 h-2.5 rounded-full bg-blue-600"></span>
+            Auswahl / Hover
+          </span>
+        </div>
       </div>
     </div>
   );

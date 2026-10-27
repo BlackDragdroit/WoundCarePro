@@ -1,70 +1,101 @@
+import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK, LEGACY_REGION_MAP } from '../components/bodyRegionsData';
+
 /**
- * Maps relative coordinates (0-100%) to specific body parts.
- * Uses a list of defined circular/elliptical regions.
- * 
- * @param {number} x - Click X %
- * @param {number} y - Click Y %
+ * Determines the anatomical region slug for a given wound marker.
+ * Supports:
+ * 1. Direct slug match (e.g. 'vorderer_rechter_oberarm')
+ * 2. Legacy regionId mapping (e.g. 'chest_left' -> 'rechte_brust')
+ * 3. LocationName text matching (e.g. 'Rechter Oberarm' -> 'vorderer_rechter_oberarm')
+ * 4. Coordinate proximity check (cx, cy distance)
+ *
+ * @param {Object} marker - Wound object { regionId, locationName, x, y, view }
  * @param {string} view - 'front' | 'back'
- * @param {Array} regions - Array of defined regions [{name, view, cx, cy, r}, ...]
- * @returns {Object|null} - Matched region object or null
+ * @returns {string|null} - Matching region slug or null
  */
-export const getRegionFromCoords = (x, y, view, regions = []) => {
-  if (!regions || regions.length === 0) return null;
+export function getRegionSlugForWound(marker, view = 'front') {
+  if (!marker) return null;
+  const markerView = marker.view || view || 'front';
+  const regions = markerView === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
 
-  // Filter regions by current view
-  const viewRegions = regions.filter(r => (r.view || 'front') === view);
-
-  // Find exact matches inside radius
-  const matches = viewRegions.filter(region => {
-    const dist = Math.hypot(x - region.cx, y - region.cy);
-    return dist <= region.r;
-  });
-
-  if (matches.length > 0) {
-    // If multiple matches, return the most specific one (smallest radius)
-    matches.sort((a, b) => a.r - b.r);
-    return matches[0];
+  // 1. Direct match on new slug
+  if (marker.regionId && regions[marker.regionId]) {
+    return marker.regionId;
   }
 
-  // If outside exact radius, find closest region within a lenient threshold (1.4x radius)
-  const nearby = viewRegions
-    .map(region => ({ region, dist: Math.hypot(x - region.cx, y - region.cy) }))
-    .filter(item => item.dist <= Math.max(item.region.r * 1.4, 6))
-    .sort((a, b) => a.dist - b.dist);
-
-  return nearby.length > 0 ? nearby[0].region : null;
-};
-
-/**
- * Gets the body part name from coordinates
- */
-export const getBodyPartFromCoords = (x, y, view, regions = []) => {
-  const match = getRegionFromCoords(x, y, view, regions);
-  return match ? match.name : null;
-};
-
-/**
- * Checks whether a wound marker belongs to a specific body region
- */
-export const isWoundInRegion = (marker, region) => {
-  if (!marker || !region) return false;
-  if ((marker.view || 'front') !== (region.view || 'front')) return false;
-
-  // Explicit region ID match
-  if (marker.regionId && marker.regionId === region.id) return true;
-
-  // Name match
-  if (marker.locationName && region.name &&
-      marker.locationName.trim().toLowerCase() === region.name.trim().toLowerCase()) {
-    return true;
+  // 2. Legacy region ID mapping
+  if (marker.regionId && LEGACY_REGION_MAP[marker.regionId]) {
+    const mappedSlug = LEGACY_REGION_MAP[marker.regionId];
+    if (regions[mappedSlug]) {
+      return mappedSlug;
+    }
   }
 
-  // Coordinate distance check
+  // 3. Location name matching
+  if (marker.locationName) {
+    const cleanLocation = marker.locationName.trim().toLowerCase();
+    
+    // Exact name match
+    for (const [slug, reg] of Object.entries(regions)) {
+      if (cleanLocation === reg.name.toLowerCase()) {
+        return slug;
+      }
+    }
+    
+    // Substring / partial match
+    for (const [slug, reg] of Object.entries(regions)) {
+      const regName = reg.name.toLowerCase();
+      if (cleanLocation.includes(regName) || regName.includes(cleanLocation)) {
+        return slug;
+      }
+    }
+  }
+
+  // 4. Coordinate distance matching (pctX, pctY)
   if (typeof marker.x === 'number' && typeof marker.y === 'number') {
-    const dist = Math.hypot(marker.x - region.cx, marker.y - region.cy);
-    return dist <= Math.max(region.r * 1.35, 6);
+    let closestSlug = null;
+    let minDist = Infinity;
+
+    for (const [slug, reg] of Object.entries(regions)) {
+      const dist = Math.hypot(marker.x - reg.center.pctX, marker.y - reg.center.pctY);
+      if (dist < minDist) {
+        minDist = dist;
+        closestSlug = slug;
+      }
+    }
+
+    // Accept within reasonable anatomical proximity (e.g. 18% of body height)
+    if (minDist <= 18) {
+      return closestSlug;
+    }
   }
 
-  return false;
-};
+  return null;
+}
 
+/**
+ * Checks whether a wound marker belongs to a specific body region slug
+ */
+export function isWoundInRegion(marker, regionSlug, view = 'front') {
+  if (!marker || !regionSlug) return false;
+  const markerView = marker.view || 'front';
+  if (markerView !== view) return false;
+  
+  const resolvedSlug = getRegionSlugForWound(marker, view);
+  return resolvedSlug === regionSlug;
+}
+
+/**
+ * Gets the German display name for a given region slug and view
+ */
+export function getRegionName(slug, view = 'front') {
+  const regions = view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+  return regions[slug]?.name || slug;
+}
+
+/**
+ * Gets region metadata (center, name, bbox)
+ */
+export function getRegionMeta(slug, view = 'front') {
+  const regions = view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+  return regions[slug] || null;
+}

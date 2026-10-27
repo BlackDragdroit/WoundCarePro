@@ -1,0 +1,57 @@
+/* BodyMap Interactive SVG Styles */
+.bodymap-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.bodymap {
+  position: relative;
+  display: block;
+}
+
+.bodymap svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Overlays stack directly on top of the base SVG */
+.bodymap .ov {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  display: block;
+}
+
+/* Default overlay region is hidden with smooth opacity transition */
+.bodymap .ov .region {
+  opacity: 0;
+  transition: opacity 0.15s ease-in-out;
+}
+
+/* Active region (wounds present or hover/selected) is visible */
+.bodymap .ov .region.is-active {
+  opacity: 1;
+}
+
+/* Base contour lines should not intercept pointer events so hits pass to region paths */
+.bodymap .base [id^="body-lines-"],
+.bodymap .base [class*="contour-lines"] {
+  pointer-events: none;
+}
+
+/* Region paths in base SVG act as hit areas with pointer cursor */
+.bodymap .base [data-region] {
+  cursor: pointer;
+}
+
+/* Subtle hover brightness on the base SVG paths for visual feedback */
+.bodymap .base [data-region]:hover {
+  filter: brightness(0.97);
+}
