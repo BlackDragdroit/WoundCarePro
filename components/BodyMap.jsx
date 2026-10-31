@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useLayoutEffect } from 'react';
 import { RotateCw, Plus, X, MapPin } from 'lucide-react';
-import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK } from './bodyRegionsData';
-import {
-  MALE_FRONT_BASE,
-  MALE_FRONT_ROT,
-  MALE_FRONT_BLAU,
-  MALE_BACK_BASE,
-  MALE_BACK_ROT,
-  MALE_BACK_BLAU
-} from './BodyMapSvgSource';
+import { getBodyRegions, BODY_REGIONS_FRONT, BODY_REGIONS_BACK } from './bodyRegionsData';
+import { BODY_MAP_SVGS } from './BodyMapSvgSource';
 import { getRegionSlugForWound } from '../utils/bodyPartMapper';
 import { STATUS_COLORS, STATUS_TRANSLATION } from '../utils/constants';
 import './BodyMap.css';
@@ -17,12 +10,23 @@ const BodyMap = ({
   onLocationSelect, 
   markers = [], 
   selectedMarkerId, 
-  onSelectMarker
+  onSelectMarker,
+  initialGender = 'male'
 }) => {
   const [view, setView] = useState('front'); // 'front' | 'back'
+  const [gender, setGender] = useState(() => {
+    return initialGender === 'female' ? 'female' : 'male';
+  });
   const [selectedRegionId, setSelectedRegionId] = useState(null);
   const [hoveredRegion, setHoveredRegion] = useState(null); // { slug, name }
   const [activePopover, setActivePopover] = useState(null); // { slug, name, wounds, center }
+
+  // Sync internal gender when patient changes
+  useEffect(() => {
+    if (initialGender) {
+      setGender(initialGender === 'female' ? 'female' : 'male');
+    }
+  }, [initialGender]);
 
   // Scalability / Size preference (compact: 350px, normal: 420px, large: 490px)
   const [scale, setScale] = useState(() => {
@@ -41,15 +45,23 @@ const BodyMap = ({
   }, [scale]);
 
   // Dimension & Aspect Ratios
-  // Front: 697 x 1759 -> ~0.396
-  // Back:  683 x 1744 -> ~0.392
-  const aspectRatio = view === 'front' ? 697 / 1759 : 683 / 1744;
+  // Male Front:   697 x 1759 -> ~0.3962
+  // Male Back:    683 x 1744 -> ~0.3916
+  // Female Front: 585 x 1775 -> ~0.3296
+  // Female Back:  582 x 1795 -> ~0.3242
+  const aspectRatio = useMemo(() => {
+    if (gender === 'female') {
+      return view === 'front' ? 585 / 1775 : 582 / 1795;
+    }
+    return view === 'front' ? 697 / 1759 : 683 / 1744;
+  }, [gender, view]);
+
   const currentWidth = Math.round(currentHeight * aspectRatio);
 
-  // Active region definitions for the current view
+  // Active region definitions for current view and gender
   const activeRegionsData = useMemo(() => {
-    return view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
-  }, [view]);
+    return getBodyRegions(gender, view);
+  }, [gender, view]);
 
   // Map wounds to regions of current view
   const woundsByRegion = useMemo(() => {
@@ -61,13 +73,13 @@ const BodyMap = ({
     const currentViewWounds = markers.filter(m => (m.view || 'front') === view);
 
     for (const wound of currentViewWounds) {
-      const slug = getRegionSlugForWound(wound, view);
+      const slug = getRegionSlugForWound(wound, view, gender);
       if (slug && map[slug]) {
         map[slug].push(wound);
       }
     }
     return map;
-  }, [markers, view, activeRegionsData]);
+  }, [markers, view, gender, activeRegionsData]);
 
   // List of slugs that currently have wounds
   const slugsWithWounds = useMemo(() => {
@@ -81,8 +93,8 @@ const BodyMap = ({
     if (!selectedMarker) return null;
     const markerView = selectedMarker.view || 'front';
     if (markerView !== view) return null;
-    return getRegionSlugForWound(selectedMarker, markerView);
-  }, [selectedMarkerId, markers, view]);
+    return getRegionSlugForWound(selectedMarker, markerView, gender);
+  }, [selectedMarkerId, markers, view, gender]);
 
   // Track previous selected marker to only switch view when a new wound is selected,
   // NOT when the user manually toggles the view.
@@ -106,10 +118,11 @@ const BodyMap = ({
   const rotRef = useRef(null);
   const blauRef = useRef(null);
 
-  // SVGs for the current view
-  const baseSvgHtml = view === 'front' ? MALE_FRONT_BASE : MALE_BACK_BASE;
-  const rotSvgHtml = view === 'front' ? MALE_FRONT_ROT : MALE_BACK_ROT;
-  const blauSvgHtml = view === 'front' ? MALE_FRONT_BLAU : MALE_BACK_BLAU;
+  // SVGs for the current view and gender
+  const currentSvgs = BODY_MAP_SVGS[gender]?.[view] || BODY_MAP_SVGS.male.front;
+  const baseSvgHtml = currentSvgs.base;
+  const rotSvgHtml = currentSvgs.rot;
+  const blauSvgHtml = currentSvgs.blau;
 
   // Helper: toggle visibility of region group in an overlay
   const showOverlayRegion = (overlayEl, slug, isActive) => {
@@ -127,7 +140,7 @@ const BodyMap = ({
       const hasWounds = slugsWithWounds.includes(slug);
       g.classList.toggle('is-active', hasWounds);
     });
-  }, [slugsWithWounds, view, rotSvgHtml]);
+  }, [slugsWithWounds, view, gender, rotSvgHtml]);
 
   // Sync Blue Overlay (Selection & Hover)
   useLayoutEffect(() => {
@@ -138,7 +151,7 @@ const BodyMap = ({
       const isHovered = slug === hoveredRegion?.slug;
       g.classList.toggle('is-active', Boolean(isSelected || isHovered));
     });
-  }, [activeSelectedRegionId, hoveredRegion, view, blauSvgHtml]);
+  }, [activeSelectedRegionId, hoveredRegion, view, gender, blauSvgHtml]);
 
   // Toggle View Handler
   const toggleView = (e) => {
@@ -146,6 +159,13 @@ const BodyMap = ({
     setView(v => v === 'front' ? 'back' : 'front');
     setSelectedRegionId(null);
     setHoveredRegion(null);
+    setActivePopover(null);
+  };
+
+  // Toggle Gender Handler
+  const toggleGender = (e) => {
+    e.stopPropagation();
+    setGender(g => g === 'female' ? 'male' : 'female');
     setActivePopover(null);
   };
 
@@ -206,6 +226,7 @@ const BodyMap = ({
           x: clientCoords?.pctX ?? meta?.center?.pctX ?? 50,
           y: clientCoords?.pctY ?? meta?.center?.pctY ?? 50,
           view,
+          gender,
           partName: name || meta?.name || slug,
           regionId: slug
         });
@@ -257,24 +278,8 @@ const BodyMap = ({
   return (
     <div className="relative w-full mx-auto bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden select-none">
       
-      {/* Top Left Controls: View Label & Active Region Badge */}
-      <div className="absolute top-2.5 left-2.5 z-20 flex items-center gap-1.5 flex-wrap pointer-events-none">
-        <span className="px-2 py-1 bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 pointer-events-auto">
-          <span className="w-2 h-2 rounded-full bg-blue-600"></span>
-          {view === 'front' ? 'Vorderansicht' : 'Rückansicht'}
-        </span>
-
-        {/* Dynamic Hover / Selected Region Badge */}
-        {activeRegionName && (
-          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded-lg text-[10px] font-bold shadow-xs border border-blue-200 animate-in fade-in transition-all">
-            {activeRegionName}
-          </span>
-        )}
-      </div>
-
-      {/* Top Right Controls Bar */}
-      <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 flex-wrap justify-end pointer-events-auto">
-        {/* View Toggle (Front / Back) */}
+      {/* Top Left Controls: View Toggle */}
+      <div className="absolute top-2.5 left-2.5 z-30 flex items-center gap-1.5 pointer-events-auto">
         <button 
           type="button"
           onClick={toggleView} 
@@ -282,8 +287,41 @@ const BodyMap = ({
           title="Ansicht drehen (Vorderseite / Rückseite)"
         >
           <RotateCw size={13} className="text-blue-600" />
-          <span>{view === 'front' ? 'Rückseite' : 'Vorderseite'}</span>
+          <span>{view === 'front' ? 'Vorderansicht' : 'Rückansicht'}</span>
         </button>
+      </div>
+
+      {/* Top Right Controls Bar: Gender Toggle & Scale */}
+      <div className="absolute top-2.5 right-2.5 z-30 flex items-center gap-1.5 flex-wrap justify-end pointer-events-auto">
+        {/* Gender Toggle: Segmented Mann / Frau */}
+        <div className="flex bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 p-0.5 text-xs font-semibold">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setGender('male'); setActivePopover(null); }}
+            className={`px-2 py-0.5 rounded transition-all text-xs flex items-center gap-1 cursor-pointer ${
+              gender === 'male' 
+                ? 'bg-blue-600 text-white font-bold shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Männliches Modell"
+          >
+            <span>♂</span>
+            <span>Mann</span>
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setGender('female'); setActivePopover(null); }}
+            className={`px-2 py-0.5 rounded transition-all text-xs flex items-center gap-1 cursor-pointer ${
+              gender === 'female' 
+                ? 'bg-blue-600 text-white font-bold shadow-xs' 
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Weibliches Modell"
+          >
+            <span>♀</span>
+            <span>Frau</span>
+          </button>
+        </div>
 
         {/* Scale Toggle (S / M / L) */}
         <div className="flex bg-white/95 backdrop-blur-md rounded-lg shadow-sm border border-slate-200 p-0.5 text-xs font-semibold">
@@ -317,9 +355,19 @@ const BodyMap = ({
         </div>
       </div>
 
+      {/* Row 2: Centered Dynamic Region Hover / Selection Badge */}
+      {activeRegionName && (
+        <div className="absolute top-11 left-0 right-0 z-20 flex justify-center pointer-events-none px-4">
+          <div className="px-3 py-1 bg-slate-900/90 text-white backdrop-blur-md rounded-full text-xs font-semibold shadow-md flex items-center gap-2 max-w-full truncate border border-slate-700/40 animate-in fade-in slide-in-from-top-1 transition-all">
+            <span className="w-2 h-2 rounded-full bg-blue-400 shrink-0 animate-pulse"></span>
+            <span className="truncate">{activeRegionName}</span>
+          </div>
+        </div>
+      )}
+
       {/* Main Interactive Canvas */}
       <div 
-        className="bodymap-wrapper bg-slate-50 pt-12 pb-4 px-4 min-h-[400px]"
+        className="bodymap-wrapper bg-slate-50 pt-16 pb-4 px-4 min-h-[400px]"
         onClick={() => {
           setSelectedRegionId(null);
           setActivePopover(null);
@@ -452,6 +500,7 @@ const BodyMap = ({
                       x: activePopover.center.pctX,
                       y: activePopover.center.pctY,
                       view,
+                      gender,
                       partName: activePopover.name,
                       regionId: activePopover.slug
                     });
@@ -469,11 +518,18 @@ const BodyMap = ({
       </div>
       
       {/* Bottom Info Bar / Legend */}
-      <div className="px-3 py-2 text-center text-xs text-slate-600 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-        <span className="flex items-center gap-1.5 text-slate-500">
-          Körperregion antippen zum Erfassen &amp; Auswählen
-        </span>
-        <div className="flex items-center gap-3 text-[11px]">
+      <div className="px-3 py-2 text-xs text-slate-600 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {activeRegionName ? (
+            <span className="text-blue-700 font-bold truncate flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0"></span>
+              <span className="truncate">{activeRegionName}</span>
+            </span>
+          ) : (
+            <span className="text-slate-500 truncate">Körperregion antippen zum Erfassen &amp; Auswählen</span>
+          )}
+        </div>
+        <div className="flex items-center gap-3 text-[11px] shrink-0">
           <span className="flex items-center gap-1">
             <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
             Region mit Wunde(n)

@@ -1,4 +1,4 @@
-import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK, LEGACY_REGION_MAP } from '../components/bodyRegionsData';
+import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK, getBodyRegions, LEGACY_REGION_MAP } from '../components/bodyRegionsData';
 
 /**
  * Determines the anatomical region slug for a given wound marker.
@@ -8,14 +8,16 @@ import { BODY_REGIONS_FRONT, BODY_REGIONS_BACK, LEGACY_REGION_MAP } from '../com
  * 3. LocationName text matching (e.g. 'Rechter Oberarm' -> 'vorderer_rechter_oberarm')
  * 4. Coordinate proximity check (cx, cy distance)
  *
- * @param {Object} marker - Wound object { regionId, locationName, x, y, view }
+ * @param {Object} marker - Wound object { regionId, locationName, x, y, view, gender }
  * @param {string} view - 'front' | 'back'
+ * @param {string} gender - 'male' | 'female'
  * @returns {string|null} - Matching region slug or null
  */
-export function getRegionSlugForWound(marker, view = 'front') {
+export function getRegionSlugForWound(marker, view = 'front', gender = 'male') {
   if (!marker) return null;
   const markerView = marker.view || view || 'front';
-  const regions = markerView === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+  const markerGender = marker.gender || gender || 'male';
+  const regions = getBodyRegions(markerGender, markerView);
 
   // 1. Direct match on new slug
   if (marker.regionId && regions[marker.regionId]) {
@@ -75,27 +77,27 @@ export function getRegionSlugForWound(marker, view = 'front') {
 /**
  * Checks whether a wound marker belongs to a specific body region slug
  */
-export function isWoundInRegion(marker, regionSlug, view = 'front') {
+export function isWoundInRegion(marker, regionSlug, view = 'front', gender = 'male') {
   if (!marker || !regionSlug) return false;
   const markerView = marker.view || 'front';
   if (markerView !== view) return false;
   
-  const resolvedSlug = getRegionSlugForWound(marker, view);
+  const resolvedSlug = getRegionSlugForWound(marker, view, gender);
   return resolvedSlug === regionSlug;
 }
 
 /**
- * Gets the German display name for a given region slug and view
+ * Gets the German display name for a given region slug, view and gender
  */
-export function getRegionName(slug, view = 'front') {
-  const regions = view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+export function getRegionName(slug, view = 'front', gender = 'male') {
+  const regions = getBodyRegions(gender, view);
   return regions[slug]?.name || slug;
 }
 
 /**
  * Gets region metadata (center, name, bbox)
  */
-export function getRegionMeta(slug, view = 'front') {
-  const regions = view === 'front' ? BODY_REGIONS_FRONT : BODY_REGIONS_BACK;
+export function getRegionMeta(slug, view = 'front', gender = 'male') {
+  const regions = getBodyRegions(gender, view);
   return regions[slug] || null;
 }
