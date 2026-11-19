@@ -5,15 +5,15 @@ Copyright (c) 2025–2026 BlackDragdroit. All rights reserved.
 1. What this covers
 
 "The Software" means WoundCarePro: the application and the server, their source code and
-documentation, and every installer and update built from them, including those published
-in the releases of this repository. The drawings of the human body are dealt with in
-section 7.
+documentation, and every installer and update built from them. The drawings of the human
+body are dealt with in section 7.
 
-2. Why this repository is public
+2. What is published, and why
 
-This repository holds the released installers and update packages of the Software. It is
-public so that installed copies can fetch their updates. Publishing them grants no rights
-in the Software. The Software is not open source, and its source code is not published.
+Installers and update packages of the Software are published in the releases of the
+repository https://github.com/BlackDragdroit/WoundCarePro, so that installed copies can
+fetch their updates. Publishing them grants no rights in the Software. The Software is not
+open source. Its source code is not published and is confidential.
 
 3. No rights without permission
 
@@ -29,9 +29,9 @@ permission is not transferable.
 
 5. What is allowed without asking
 
-- Viewing this repository, and forking it on GitHub, to the extent that GitHub's Terms of
-  Service give every GitHub user that right for a public repository. A fork stays subject
-  to this licence.
+- Viewing the public repository named in section 2, and forking it on GitHub, to the
+  extent that GitHub's Terms of Service give every GitHub user that right for a public
+  repository. A fork stays subject to this licence.
 - What applicable law permits regardless of a licence and does not allow a licence to
   exclude.
 
@@ -73,10 +73,10 @@ https://github.com/BlackDragdroit
 ---
 
 Kurzfassung auf Deutsch (zur Orientierung; maßgeblich ist der englische Text):
-Alle Rechte vorbehalten. Dieses Repository enthält nur die veröffentlichten
-Installationspakete und ist öffentlich, damit installierte Kopien ihre Updates laden
-können; der Quelltext ist nicht veröffentlicht. Die Software darf nur mit Zustimmung des
-Rechteinhabers installiert und benutzt werden. Kopieren, Ändern und Weitergeben sind ohne
-dessen Zustimmung nicht erlaubt. Die Lizenzen der enthaltenen Komponenten Dritter bleiben
-unberührt. Die Körperzeichnungen wurden zugekauft: Die Rechte daran bleiben bei ihrem
-Urheber, und sie dürfen der Software nicht entnommen werden.
+Alle Rechte vorbehalten. Veröffentlicht werden nur die Installationspakete, damit
+installierte Kopien ihre Updates laden können; der Quelltext ist nicht veröffentlicht und
+vertraulich. Die Software darf nur mit Zustimmung des Rechteinhabers installiert und
+benutzt werden. Kopieren, Ändern und Weitergeben sind ohne dessen Zustimmung nicht
+erlaubt. Die Lizenzen der enthaltenen Komponenten Dritter bleiben unberührt. Die
+Körperzeichnungen wurden zugekauft: Die Rechte daran bleiben bei ihrem Urheber, und sie
+dürfen der Software nicht entnommen werden.
