@@ -1,0 +1,82 @@
+WoundCarePro – Proprietary Software Licence
+
+Copyright (c) 2025–2026 BlackDragdroit. All rights reserved.
+
+1. What this covers
+
+"The Software" means WoundCarePro: the application and the server, their source code and
+documentation, and every installer and update built from them, including those published
+in the releases of this repository. The drawings of the human body are dealt with in
+section 7.
+
+2. Why this repository is public
+
+This repository holds the released installers and update packages of the Software. It is
+public so that installed copies can fetch their updates. Publishing them grants no rights
+in the Software. The Software is not open source, and its source code is not published.
+
+3. No rights without permission
+
+No right to use, copy, modify, merge, publish, distribute, sublicense, sell or host the
+Software, or to make works derived from it, in whole or in part, is granted, except as
+stated in sections 4 and 5.
+
+4. Who may use the Software
+
+The Software may be installed and used only by persons and organisations to whom the
+copyright holder has given permission, and only within the terms agreed with them. That
+permission is not transferable.
+
+5. What is allowed without asking
+
+- Viewing this repository, and forking it on GitHub, to the extent that GitHub's Terms of
+  Service give every GitHub user that right for a public repository. A fork stays subject
+  to this licence.
+- What applicable law permits regardless of a licence and does not allow a licence to
+  exclude.
+
+6. Components by others
+
+The Software contains components by others, among them React, Tauri, jsPDF, JSZip, Lucide,
+Express, mysql2, the typeface Google Sans Flex and the DejaVu fonts. Each of them stays
+under its own licence (MIT, ISC, BSD, Apache 2.0, MPL 2.0, zlib, SIL Open Font License,
+the DejaVu fonts licence). This licence does not apply to them and limits no right those
+licences grant.
+
+7. The drawings of the human body
+
+The drawings of the human body that the Software contains were bought by the copyright
+holder and are used in the Software under the terms of that purchase. The rights in them
+stay with their author. Nothing in this file licenses them to anyone: they may not be
+taken from the Software, copied, or used elsewhere.
+
+8. Data recorded with the Software
+
+Data that users record with the Software is theirs. This licence gives the copyright holder
+no rights in it.
+
+9. No warranty, liability
+
+To the extent that applicable law permits, the Software is provided "as is", without
+warranty of any kind, and the copyright holder is not liable for damage that arises from
+its use. Liability that the law does not allow to be excluded, for example for intent, for
+gross negligence or for injury to life, body or health, is unaffected. An agreement with a
+permitted user may provide otherwise.
+
+The Software is a tool for documentation. It does not replace professional judgement.
+
+10. Requests
+
+Requests for permission go to the copyright holder:
+https://github.com/BlackDragdroit
+
+---
+
+Kurzfassung auf Deutsch (zur Orientierung; maßgeblich ist der englische Text):
+Alle Rechte vorbehalten. Dieses Repository enthält nur die veröffentlichten
+Installationspakete und ist öffentlich, damit installierte Kopien ihre Updates laden
+können; der Quelltext ist nicht veröffentlicht. Die Software darf nur mit Zustimmung des
+Rechteinhabers installiert und benutzt werden. Kopieren, Ändern und Weitergeben sind ohne
+dessen Zustimmung nicht erlaubt. Die Lizenzen der enthaltenen Komponenten Dritter bleiben
+unberührt. Die Körperzeichnungen wurden zugekauft: Die Rechte daran bleiben bei ihrem
+Urheber, und sie dürfen der Software nicht entnommen werden.
